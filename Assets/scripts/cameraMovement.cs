@@ -10,11 +10,19 @@ public class cameraMovement : MonoBehaviour
     ///  camera movement while holding ppm - move in space
     /// </summary>
     // Start is called before the first frame update
-    
+    Vector3 movement;
+    Vector3 cameraRotation;
 
-    // Update is called once per frame
+    private void Start()
+    {
+        movement = transform.localPosition;
+    }
     void Update()
     {
+        if (Input.GetKey(KeyCode.W)) 
+        {
+        
+        }
         if (Input.GetMouseButton(0)) { }
     }
 }

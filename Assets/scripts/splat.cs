@@ -9,21 +9,29 @@ using UnityEngine.Rendering.Universal;
 using System.Text;
 using System.Linq;
 using System.Drawing;
+using static UnityEditor.PlayerSettings;
 
 public class splat : MonoBehaviour
 {
 
-    //poprawic jakie typy do nich
-    struct splatStruct
+   
+    public struct splatStruct
     {
+        
+        public Vector3 position;
+        //Covariance Matrix is stored as array of 3 Vector 3 - stored data is not too big
+        public Vector3[] covMatrix;
+        //potrzebny skrypt na obliczanie hsrmonik sferycznych, na razie wczytywana srednia 
+        public UnityEngine.Color sh;
+        public float splatOpacity;
 
-        Vector3 position;
-        //potrzebne wczytane param wewnêtrzne i zewnêtrzne kamery
-        float[] covMatrix;
-        //potrzebny skrypt na obliczanie hsrmonik sferycznych
-        UnityEngine.Color sh;
-        float splatOpacity;
-
+        public splatStruct(Vector3 pos, Vector3[] covMatrix, UnityEngine.Color sh,float splatOpacity)
+            {
+            position = pos;
+            this.covMatrix = covMatrix;
+            this.sh = sh;
+            this.splatOpacity = splatOpacity;
+            }
 
     }
 
@@ -44,58 +52,11 @@ public class splat : MonoBehaviour
 
 
 
-    /// <summary>
-    /// Czyta punkty z pliku .ply i laduje je do listy splatPoint, gdzie ma pozycje i kolor
-    /// </summary>
-    /// <returns></returns>
-    /*
-    public List<splatPoint> readPoints()
-    {
-        List<splatPoint> points = new List<splatPoint>();
-        string filePath = Path.Combine(Application.streamingAssetsPath, plyFileName);
-
-        if (File.Exists(filePath))
-        {
-            string content = File.ReadAllText(filePath);
-
-            string[] splitContent = content.Split('\n', '\r');
-            //Debug.Log(splitContent[8]);
-            string temp = "";
-            string[] tempArr = new string[7];
-
-            foreach (string con in splitContent)
-            {
-                //w linijce musi byc 7 parametrow - pozycje xyz, kolory rgb, przezroczystosc, jesli linijka nie ma tych danych nie jest wazna - nie jest punktem
-                temp = con.Replace('.', ',');
-                tempArr = temp.Split(' ');
-
-                //tam gdzie jest odpowiednia liczba parametrow, ladujemy punkty do listy punktow
-                if (tempArr.Length == 7)
-                {
-                    points.Add(new splatPoint(
-                        new Vector3(float.Parse(tempArr[0]), float.Parse(tempArr[1]), float.Parse(tempArr[2])),
-                        new UnityEngine.Color(float.Parse(tempArr[3]), float.Parse(tempArr[4]), float.Parse(tempArr[5]), float.Parse(tempArr[6]))
-                        ));
-                }
-
-            }
-
-        }
-        else
-        {
-            Debug.LogError("Nie ma pliku PLY w StreaminAssets.");
-        }
-
-        return points;
-    }
-
-    */
-
     void Start()
     {
         points3DRead obiektDoCzytania = gameObject.AddComponent<points3DRead>();
         List<points3DRead.splatPoint> p = obiektDoCzytania.readPoints();
-       // Debug.Log("List of points:" + p.Count());
+       
 
         List<List<points3DRead.splatPoint>> groups = obiektDoCzytania.FindClosestGroups(p);
 
@@ -106,69 +67,67 @@ public class splat : MonoBehaviour
       //  }
     }
 
-    /// <summary>
-    /// splaty tworzone przy inicjalizacji
-    /// </summary>
-    /// <returns></returns>
-    public splat createSplat() 
-    {
-        splat sp = new splat();
-        //przypisanie pozycji sredniej
-        //przypisanie matrycy jednostkowek
-        //przypisanie 
-
-        return sp;
-    }
-
-    /// <summary>
     /// poprawianie parametrow splatu przy treningu
     /// </summary>
     /// <param name="spOld"></param>
     /// <returns></returns>
-    public splat updateSplat(splat spOld) 
+
+    public Vector3[] getCovarianceMatrix(Vector3 splatCenterPosition,Vector3[] points) 
     {
-        splat sp = new splat();
-        //przypisanie matrycy
-        //przypisanie 
-        return sp;
-    }
 
-    public Vector3 getMeanPosition(Vector3 firstPos,Vector3 secondPos, Vector3 thirdPos) 
-    {
-        Vector3 meanPosition = new Vector3();
+        Vector3[] matrix = new Vector3[3];
 
-        return meanPosition;
-    }
-
-    public UnityEngine.Color getMeanColor() 
-    {
-        UnityEngine.Color col = new UnityEngine.Color();
-        return col;
-    }
-
-    /*
-    public List<List<splatPoint>> FindClosestGroups(List<splatPoint> points)
-    {
-        List<List<splatPoint>> groups = new List<List<splatPoint>>();
-
-        foreach (var point in points)
+        // Inicjalizuj macierz zerami
+        for (int i = 0; i < 3; i++)
         {
-            // Calculate distances from the current point to all other points
-            var distances = points
-                .Where(p => p.position != point.position) // Exclude the current point
-                .Select(p => new { Point = p, Distance = Vector3.Distance(point.position, p.position) })
-                .OrderBy(x => x.Distance) // Sort by distance
-                .Take(2) // Take the two closest points
-                .Select(x => x.Point) // Get the points only
-                .ToList();
-
-            // Add the current point and its two closest points as a group
-            var group = new List<splatPoint> { point };
-            group.AddRange(distances);
-
-            groups.Add(group);
+            matrix[i] = Vector3.zero;
         }
 
-        return groups;
-    }*/
+        /*Debug.Log("Poczatkowe dane:" +
+            "\nSrednia wartosc:" + splatCenterPosition +
+            "\nWartosci punktow: " +
+            "\n" + points[0] +
+            "\n" + points[1] +
+            "\n" + points[2]);
+        */
+        if (points.Count() > 2)
+        {
+            // Iteruj przez punkty i sumuj wk³ady do macierzy
+            for (int i = 0; i < 3; i++)
+            {
+                Vector3 diff = points[i] - splatCenterPosition;
+
+                matrix[0] += new Vector3(diff.x * diff.x, diff.x * diff.y, diff.x * diff.z);
+                matrix[1] += new Vector3(diff.y * diff.x, diff.y * diff.y, diff.y * diff.z);
+                matrix[2] += new Vector3(diff.z * diff.x, diff.z * diff.y, diff.z * diff.z);
+
+               /* Debug.Log("Dla i rownego:" + i +
+                    "\nwartosc diff:" + diff +
+                    "\n wartosci matrycy:" +
+                    "\n" + matrix[0] +
+                    "\n" + matrix[1] +
+                    "\n" + matrix[2]);*/
+            }
+
+            // Uœrednij elementy macierzy po zakoñczeniu sumowania
+            for (int i = 0; i < 3; i++)
+            {
+                matrix[i] /= 3;
+            }
+        }
+
+        return matrix;
+    }
+
+    /// <summary>
+    /// Returns list of splats, with declared prameters, requires list of splatPoints, to get positions and colors from them
+    /// </summary>
+    /// <returns></returns>
+    public List<splatStruct> getSplats(List<points3DRead.splatPoint> points) 
+    {
+        List <splatStruct> splatList = new List<splatStruct>();
+
+        return splatList;
+    }
+   
 }
