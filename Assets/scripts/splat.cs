@@ -10,6 +10,8 @@ using System.Text;
 using System.Linq;
 using System.Drawing;
 using static UnityEditor.PlayerSettings;
+using Unity.Mathematics;
+using static points3DRead;
 
 public class splat : MonoBehaviour
 {
@@ -20,17 +22,21 @@ public class splat : MonoBehaviour
         
         public Vector3 position;
         //Covariance Matrix is stored as array of 3 Vector 3 - stored data is not too big
-        public Vector3[] covMatrix;
+        //public Vector3[] covMatrix;
+        public Vector3 scale;
+        public quaternion rotation;
         //potrzebny skrypt na obliczanie hsrmonik sferycznych, na razie wczytywana srednia 
         public UnityEngine.Color sh;
         public float splatOpacity;
 
-        public splatStruct(Vector3 pos, Vector3[] covMatrix, UnityEngine.Color sh,float splatOpacity)
+        public splatStruct(Vector3 pos, UnityEngine.Color sh,float splatOpacity, Vector3 sVec, quaternion rotQuat)
             {
             position = pos;
-            this.covMatrix = covMatrix;
+            //this.covMatrix = covMatrix;
             this.sh = sh;
             this.splatOpacity = splatOpacity;
+            scale= sVec;
+            rotation = rotQuat;
             }
 
     }
@@ -72,51 +78,67 @@ public class splat : MonoBehaviour
     /// <param name="spOld"></param>
     /// <returns></returns>
 
-    public Vector3[] getCovarianceMatrix(Vector3 splatCenterPosition,Vector3[] points) 
+    public double[,] getCovarianceMatrix(Vector3 splatCenterPosition,Vector3[] points) 
     {
 
-        Vector3[] matrix = new Vector3[3];
+        //Vector3[] matrix = new Vector3[3];
 
-        // Inicjalizuj macierz zerami
-        for (int i = 0; i < 3; i++)
-        {
-            matrix[i] = Vector3.zero;
-        }
-
-        /*Debug.Log("Poczatkowe dane:" +
-            "\nSrednia wartosc:" + splatCenterPosition +
-            "\nWartosci punktow: " +
-            "\n" + points[0] +
-            "\n" + points[1] +
-            "\n" + points[2]);
-        */
+        double[,] covariance = new double[3, 3];
+        
         if (points.Count() > 2)
         {
-            // Iteruj przez punkty i sumuj wk³ady do macierzy
-            for (int i = 0; i < 3; i++)
+            /* // Iteruj przez punkty i sumuj wk³ady do macierzy
+             for (int i = 0; i < 3; i++)
+             {
+                 Vector3 diff = points[i] - splatCenterPosition;
+
+                 matrix[0] += new Vector3(diff.x * diff.x, diff.x * diff.y, diff.x * diff.z);
+                 matrix[1] += new Vector3(diff.y * diff.x, diff.y * diff.y, diff.y * diff.z);
+                 matrix[2] += new Vector3(diff.z * diff.x, diff.z * diff.y, diff.z * diff.z);
+
+
+
+             }
+
+             for (int i = 0; i < 3; i++)
+             {
+                 matrix[i] /= 3;
+             }*/
+
+
+            foreach (var point in points)
             {
-                Vector3 diff = points[i] - splatCenterPosition;
+                Vector3 diff = point - splatCenterPosition;
 
-                matrix[0] += new Vector3(diff.x * diff.x, diff.x * diff.y, diff.x * diff.z);
-                matrix[1] += new Vector3(diff.y * diff.x, diff.y * diff.y, diff.y * diff.z);
-                matrix[2] += new Vector3(diff.z * diff.x, diff.z * diff.y, diff.z * diff.z);
-
-               /* Debug.Log("Dla i rownego:" + i +
-                    "\nwartosc diff:" + diff +
-                    "\n wartosci matrycy:" +
-                    "\n" + matrix[0] +
-                    "\n" + matrix[1] +
-                    "\n" + matrix[2]);*/
+                // Dodaj wk³ad do macierzy kowariancji
+                covariance[0, 0] += diff.x * diff.x; // xx
+                covariance[0, 1] += diff.x * diff.y; // xy
+                covariance[0, 2] += diff.x * diff.z; // xz
+                covariance[1, 0] += diff.y * diff.x; // yx
+                covariance[1, 1] += diff.y * diff.y; // yy
+                covariance[1, 2] += diff.y * diff.z; // yz
+                covariance[2, 0] += diff.z * diff.x; // zx
+                covariance[2, 1] += diff.z * diff.y; // zy
+                covariance[2, 2] += diff.z * diff.z; // zz
             }
 
-            // Uœrednij elementy macierzy po zakoñczeniu sumowania
+
+
+            // Uœrednij macierz
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    covariance[i, j] /= points.Length;
+
+            //zapobiega NaN w Scale
+            double epsilon = 1e-6;
             for (int i = 0; i < 3; i++)
             {
-                matrix[i] /= 3;
+                covariance[i, i] += epsilon; // Dodanie epsilon do przek¹tnej
             }
+
         }
 
-        return matrix;
+        return covariance;
     }
 
     /// <summary>

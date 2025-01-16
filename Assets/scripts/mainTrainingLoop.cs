@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 using static points3DRead;
+using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.LinearAlgebra.Double;
 
 public class mainTrainingLoop : MonoBehaviour
 {
@@ -42,6 +44,8 @@ public class mainTrainingLoop : MonoBehaviour
             points[i] = p; // Assign the modified struct back to the list
         }
 
+        int zeroCounter = 0;
+
         foreach (var point in points)
         {
             // Calculate distances from the current point to all other points
@@ -61,31 +65,105 @@ public class mainTrainingLoop : MonoBehaviour
 
             Vector3[] pointsForMatrix = {group[0].position , group[1].position , group[2].position };
            
-            Vector3[] covMatrix = splatFunctions.getCovarianceMatrix(meanPosition,pointsForMatrix);
+            double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition,pointsForMatrix);
+
+
+            // Tworzymy macierz z danych
+            Matrix<double> sigmaMatrix = DenseMatrix.OfArray(covariance);
+
+            // Rozk³ad wartoœci w³asnych
+            var evd = sigmaMatrix.Evd(symmetricity: Symmetricity.Symmetric);
+
+            // Macierz rotacji (R)
+            Matrix<double> R = evd.EigenVectors;
+
+            // Skala (S) - pierwiastki z wartoœci w³asnych
+            Vector<double> eigenValues = evd.EigenValues.Real(); // Wartoœci w³asne
+
+            Vector<double> scale = eigenValues.PointwiseSqrt();  // Pierwiastki
+
+
+            Vector3 scaleVec = new Vector3(
+                (float)scale[0],
+                (float)scale[1],
+                (float)scale[2]
+                );
+
+            
+
+            Quaternion rotationQuat = ParseMatrixToQuaternion(R);
+
 
             splatList.Add(new splat.splatStruct(
                 meanPosition,
-                covMatrix,
                 meanColor,
-                1f
+                1f,
+                scaleVec,
+                rotationQuat
                 ));
         }
 
-        foreach (splat.splatStruct spStr in splatList) 
+        Debug.Log("Liczba splatow:" + splatList.Count());
+        Debug.Log("Liczba zer w scale:" + zeroCounter);
+
+        foreach (splat.splatStruct spStr in splatList)
         {
-            Debug.Log("Dane splata: "+
-                "\nPosition: "+spStr.position+
-                "\nCovMAtrix: " 
-                +"\n "+ spStr.covMatrix[0]+
-                "\n "+ spStr.covMatrix[1]+
-                "\n "+ spStr.covMatrix[2]+
-                "\nColor: " + spStr.sh+
-                "\nVisibility: " + spStr.splatOpacity
-                 );
+            if (float.IsNaN(spStr.scale.x))
+            {
+                Debug.Log("Dane splata: " +
+                    "\nPosition: " + spStr.position
+                    + "\n S: " + spStr.scale +
+                    "\n R: " + spStr.rotation +
+                    "\nColor: " + spStr.sh +
+                    "\nVisibility: " + spStr.splatOpacity
+                     );
+            }
         }
 
     }
 
-    
 
+    Quaternion ParseMatrixToQuaternion(Matrix<double> R)
+    {
+        float w, x, y, z;
+
+        if (R[0, 0] + R[1, 1] + R[2, 2] > 0)
+        {
+            float t = (float)(R[0, 0] + R[1, 1] + R[2, 2] + 1);
+            float s = 0.5f / Mathf.Sqrt(t);
+            w = s * t;
+            x = (float)((R[2, 1] - R[1, 2]) * s);
+            y = (float)((R[0, 2] - R[2, 0]) * s);
+            z = (float)((R[1, 0] - R[0, 1]) * s);
+        }
+        else if (R[0, 0] > R[1, 1] && R[0, 0] > R[2, 2])
+        {
+            float t = (float)(1 + R[0, 0] - R[1, 1] - R[2, 2]);
+            float s = 0.5f / Mathf.Sqrt(t);
+            w = (float)((R[2, 1] - R[1, 2]) * s);
+            x = s * t;
+            y = (float)((R[0, 1] + R[1, 0]) * s);
+            z = (float)((R[0, 2] + R[2, 0]) * s);
+        }
+        else if (R[1, 1] > R[2, 2])
+        {
+            float t = (float)(1 - R[0, 0] + R[1, 1] - R[2, 2]);
+            float s = 0.5f / Mathf.Sqrt(t);
+            w = (float)((R[0, 2] - R[2, 0]) * s);
+            x = (float)((R[0, 1] + R[1, 0]) * s);
+            y = s * t;
+            z = (float)((R[1, 2] + R[2, 1]) * s);
+        }
+        else
+        {
+            float t = (float)(1 - R[0, 0] - R[1, 1] + R[2, 2]);
+            float s = 0.5f / Mathf.Sqrt(t);
+            w = (float)((R[1, 0] - R[0, 1]) * s);
+            x = (float)((R[0, 2] + R[2, 0]) * s);
+            y = (float)((R[1, 2] + R[2, 1]) * s);
+            z = s * t;
+        }
+
+        return new Quaternion(x, y, z, w);
+    }
 }
