@@ -26,11 +26,11 @@ public class cameraRead : MonoBehaviour
     /// </summary>
     public struct cameraExtrinsic
     {
-        int cameraID;
-        int imageID;
-        String imageName;
-        Vector3 cameraPosition;
-        Quaternion cameraRotation;
+        public int cameraID;
+        public int imageID;
+        public String imageName;
+        public Vector3 cameraPosition;
+        public Quaternion cameraRotation;
 
         public cameraExtrinsic(int cId, int iId, String imgName, Vector3 pos, Quaternion rot)
         {
@@ -76,6 +76,7 @@ public class cameraRead : MonoBehaviour
                     int.TryParse(tempIter[0], out h);
                     int j = 0;
                     int.TryParse(tempIter[8], out j);
+                    tempIter[9] = tempIter[9].Replace(",", ".");
                     cameraExtrinsic cam = new cameraExtrinsic(
                         h,
                         j,
@@ -107,6 +108,8 @@ public class cameraRead : MonoBehaviour
 
 
         }
+
+       
 
         return listCameraE;
     }

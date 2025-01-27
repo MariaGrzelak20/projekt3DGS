@@ -1,14 +1,48 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
-
-// Create a RenderTexture with enableRandomWrite flag and set it
-// with cs.SetTexture
-RWTexture2D<float4> Result;
-
-[numthreads(8,8,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+// Struktura splata
+struct splatStruct
 {
-    // TODO: insert actual code here!
+    float3 position;  // Pozycja w przestrzeni
+    float3 scale;     // Skala
+    float4 rotation;  // Rotacja
+    float shR[9];     // Współczynniki SH (sfera, kanał czerwony)
+    float shG[9];     // Współczynniki SH (sfera, kanał zielony)
+    float shB[9];     // Współczynniki SH (sfera, kanał niebieski)
+};
 
-    Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+// Bufory wejściowe (splat, camera, itd.)
+StructuredBuffer<splatStruct> splatBuffer : register(t0);   // Bufor dla splatów
+StructuredBuffer<float> cameraBuffer : register(t1);        // Bufor dla kamery (pozycja)
+Texture2D<float4> groundTruthImage : register(t2);         // Tekstura do porównania (ground truth)
+// Bufor wyjściowy: przechowywanie wyniku
+RWBuffer<float> lossBuffer : register(u0);
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+   // Odczytaj dane z buforów
+    splatStruct splat = splatBuffer[id.x];  // Odczytaj splata dla danego wątku
+    float3 cameraPos = float3(cameraBuffer[0], cameraBuffer[1], cameraBuffer[2]);  // Odczytaj pozycję kamery (jako wektor 3D)
+
+    // Przykład: przekształć dane (np. oblicz wpływ splata na piksel w obrazie)
+    // Pobierz piksel z ground truth
+    float4 gtColor = groundTruthImage.Load(int3(id.xy, 0));  // Odczytaj piksel z ground truth
+
+    // Przykładowe obliczenia na splatach i kamerze:
+    float3 splatPos = splat.position + cameraPos;  // Przykład: oblicz wpływ splata na piksel w przestrzeni kamery
+    
+    float4 renderedColor = (splat.position+cameraPos,0);  // Funkcja do obliczeń
+
+
+    // Renderuj wynik do tekstury wyjściowej (np. porównanie)
+    // Oblicz stratę (np. MSE)
+    float diff = distance(renderedColor, gtColor);  // Możesz użyć np. L2 (MSE) lub innej metody
+
+    // Zapisz wynik do bufora
+    lossBuffer[id.x] = diff;  // Możesz używać tego samego indeksu do zapisywania wyniku dla każdego piksela
+
 }
+
+
+

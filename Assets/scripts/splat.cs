@@ -24,19 +24,21 @@ public class splat : MonoBehaviour
         //Covariance Matrix is stored as array of 3 Vector 3 - stored data is not too big
         //public Vector3[] covMatrix;
         public Vector3 scale;
-        public quaternion rotation;
-        //potrzebny skrypt na obliczanie hsrmonik sferycznych, na razie wczytywana srednia 
-        public UnityEngine.Color sh;
-        public float splatOpacity;
+        public Quaternion rotation;
+        public float[] shR;
+        public float[] shG;
+        public float[] shB;
 
-        public splatStruct(Vector3 pos, UnityEngine.Color sh,float splatOpacity, Vector3 sVec, quaternion rotQuat)
+
+        public splatStruct(Vector3 pos,Vector3 sVec, Quaternion rotQuat, float[] r, float[] g, float[] b)
             {
             position = pos;
             //this.covMatrix = covMatrix;
-            this.sh = sh;
-            this.splatOpacity = splatOpacity;
             scale= sVec;
             rotation = rotQuat;
+            shR= r;
+            shG = g;
+            shB= b;
             }
 
     }

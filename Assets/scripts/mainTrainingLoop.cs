@@ -6,6 +6,13 @@ using UnityEngine;
 using static points3DRead;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
+using static cameraRead;
+using static splat;
+using Unity.VisualScripting.Antlr3.Runtime.Misc;
+using UnityEngine.Windows.WebCam;
+using System;
+using UnityEngine.Rendering;
+using UnityEngine.UIElements;
 
 public class mainTrainingLoop : MonoBehaviour
 {
@@ -23,7 +30,14 @@ public class mainTrainingLoop : MonoBehaviour
     /// afterwards we can attach create mesh to game object, assign shader showing mesh, and see the result
     /// </summary>
     /// 
-    ComputeBuffer m_Buffer;
+    private ComputeBuffer m_Buffer;
+    private ComputeBuffer cameraBuffer;
+    private Texture2D image;
+    private ComputeBuffer lossBuffer;  // Bufor na wynik straty
+
+    [SerializeField]
+    string imagesPath;
+    public ComputeShader computeShader;
     
 
     void Start()
@@ -31,12 +45,17 @@ public class mainTrainingLoop : MonoBehaviour
         List<splat.splatStruct> splatList = new List<splat.splatStruct>();
         points3DRead reader = gameObject.AddComponent<points3DRead>();
         
-        List<points3DRead.splatPoint> points = reader.readPoints();
+        List<splatPoint> points = reader.readPoints();
         splat splatFunctions = gameObject.AddComponent<splat>();
-        
+
+        //read camera positions and the image
+        List<cameraExtrinsic> cameraValues = gameObject.GetComponent<cameraRead>().readCameraExtrinsics();
+
         //scaling points by 1000, because most of them fall to 0,00... and float shows this as 0
         float scaleFactor = 100f;
 
+        //imagesPath.Replace(@"\", "/");
+        
         for (int i = 0; i < points.Count; i++) 
         {
             var p = points[i]; // Copy the struct (value type)
@@ -44,8 +63,8 @@ public class mainTrainingLoop : MonoBehaviour
             points[i] = p; // Assign the modified struct back to the list
         }
 
-        int zeroCounter = 0;
 
+        //assigning values to splats and creating  a list of them, here also decleare spherical harmonic coefficients
         foreach (var point in points)
         {
             // Calculate distances from the current point to all other points
@@ -93,35 +112,152 @@ public class mainTrainingLoop : MonoBehaviour
 
             Quaternion rotationQuat = ParseMatrixToQuaternion(R);
 
+            //w petli idacej po wszystkich kamerach, obliczamy sh dla danego splata
 
+            
             splatList.Add(new splat.splatStruct(
                 meanPosition,
-                meanColor,
-                1f,
                 scaleVec,
-                rotationQuat
+                rotationQuat,
+                new float[] {meanColor.r,0,0,0,0,0,0,0,0 },
+                new float[] {meanColor.g,0,0,0,0,0,0,0,0 },
+                new float[] {meanColor.b,0,0,0,0,0,0,0,0 }
                 ));
         }
-
+        
+        //Debug showing of values
         Debug.Log("Liczba splatow:" + splatList.Count());
-        Debug.Log("Liczba zer w scale:" + zeroCounter);
-
+        int iter = 0;
+        //wyswietlanie danych
         foreach (splat.splatStruct spStr in splatList)
         {
-            if (float.IsNaN(spStr.scale.x))
-            {
+
+           if ((iter%10)==0)//codziesiaty
+           {
                 Debug.Log("Dane splata: " +
                     "\nPosition: " + spStr.position
                     + "\n S: " + spStr.scale +
                     "\n R: " + spStr.rotation +
-                    "\nColor: " + spStr.sh +
-                    "\nVisibility: " + spStr.splatOpacity
+                    "\nColorR: " + spStr.shR[0]+" " + spStr.shR[1] +
+                    "\nColorG: " + spStr.shG[0]+" " + spStr.shG[1] +
+                    "\nColorB: " + spStr.shB[0]+" " + spStr.shB[1] 
                      );
-            }
+           }
+            iter++;
         }
 
-    }
+        //loop1 - general number of complete training iterations
+        //complete iteration - iteration that went through all of camera pov, then got gradients for all of splats and upgraded them
+        //total value of loss - value indicating how different is generated image compared to gorund truth
+        float lossTotalValue = 0;
+        
+        for (int i = 0; i < 1; i++) 
+        {   
 
+            for (int j = 0; j < 4;j++)//cameraValues.Count(); j++) 
+            {
+                Vector3 camPos = cameraValues[j].cameraPosition;
+                string imageN = cameraValues[j].imageName    
+                    .Replace("\r", "")
+                    .Replace("\n", "")
+                    .Replace("\"", "")
+                    .Replace("?", "")
+                    .Replace("*", "");
+                string path =  Path.Combine(imagesPath,imageN);
+                Debug.Log(path);
+               
+                //read image and load it into texture 2d
+                byte[] file = File.ReadAllBytes(path);
+                image = new Texture2D(2, 2);
+                image.LoadImage(file);
+
+                //prepeare compute bufer- inside data of splats, current camera position and image used for comparison
+                //m_Buffer = new ComputeBuffer(splatList.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(splat.splatStruct)));
+
+                // Set the data into the buffer
+                // m_Buffer.SetData(splatList);
+                List<float> flattenedData = new List<float>();
+                foreach (var splat in splatList)
+                {
+                    flattenedData.AddRange(Flatten(splat));
+                }
+
+                // Convert flattened data to an array
+                float[] flattenedArray = flattenedData.ToArray();
+
+                // Create and set the ComputeBuffer
+                //ComputeBuffer splatBuffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
+                //splatBuffer.SetData(flattenedArray);
+                m_Buffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
+                m_Buffer.SetData(flattenedArray);
+
+                
+                float[] camPosArr = {camPos.x,camPos.y,camPos.z };
+                cameraBuffer = new ComputeBuffer (camPosArr.Length, sizeof(float));
+                cameraBuffer.SetData(camPosArr);
+
+                // Bufor na wynik straty
+                ComputeBuffer lossBuffer = new ComputeBuffer(1, sizeof(float));
+                float[] initialLossValue = new float[1] { 0 };
+                lossBuffer.SetData(initialLossValue);
+
+                //load bufer into compute shader
+                int kernelHandle = computeShader.FindKernel("CSMain");
+                computeShader.SetBuffer(kernelHandle, "splatBuffer", m_Buffer);
+                computeShader.SetBuffer(kernelHandle, "cameraBuffer", cameraBuffer);
+                computeShader.SetBuffer(kernelHandle, "lossBuffer", lossBuffer);
+                computeShader.SetTexture(kernelHandle, "groundTruthImage", image);
+
+                // Dispatch the compute shader (example dispatch size)
+                computeShader.Dispatch(kernelHandle, splatList.Count / 64, 1, 1);
+
+
+                float[] lossResults = new float[1];
+                lossBuffer.GetData(lossResults);
+
+                // Oblicz ostateczn¹ stratê (np. suma strat wszystkich pikseli)
+                float totalLoss = 0f;
+                for (int k = 0; k < lossResults.Length; k++)
+                {
+                    totalLoss += lossResults[i];  // Zbieranie wyników
+                }
+
+                Debug.Log("Total Loss: " + totalLoss);
+
+                // Zwolnienie zasobów
+                m_Buffer.Release();
+                cameraBuffer.Release();
+                lossBuffer.Release(); 
+
+                float lossShaderOutput = totalLoss;
+                //we need combined loss value for gradients and splat update
+                lossTotalValue += lossShaderOutput;
+            }
+
+            //for all, ALL parameters - xyz of position, rgb of colors, R and S, we get gradient using the parameter and loss
+            //from that we get new, better value and assign it to the splat
+            //all of this has to repeat itself like tousand of times
+        }
+
+        //change shader from compute to shader showing the result - for example the GaussianRender from that finished gaussian renderer in unity
+    }
+    public float[] Flatten(splatStruct splat)
+    {
+        
+        List<float> flattenedData = new List<float>();
+
+        // Add position, scale, and rotation to the flattened list
+        flattenedData.AddRange(new float[] { splat.position.x, splat.position.y, splat.position.z });
+        flattenedData.AddRange(new float[] { splat.scale.x, splat.scale.y, splat.scale.z });
+        flattenedData.AddRange(new float[] { splat.rotation.x, splat.rotation.y, splat.rotation.z, splat.rotation.w });
+
+        // Add spherical harmonics coefficients to the flattened list
+        flattenedData.AddRange(splat.shR);
+        flattenedData.AddRange(splat.shG);
+        flattenedData.AddRange(splat.shB);
+
+        return flattenedData.ToArray();
+    }
 
     Quaternion ParseMatrixToQuaternion(Matrix<double> R)
     {
@@ -166,4 +302,5 @@ public class mainTrainingLoop : MonoBehaviour
 
         return new Quaternion(x, y, z, w);
     }
+
 }

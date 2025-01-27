@@ -668,6 +668,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 304ce3ef0bfd66945aab1249a888480b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  imagesPath: C:\Users\g7238\Desktop\inzynierkowe\tandt_db\db\drjohnson\images
+  computeShader: {fileID: 7200000, guid: 95ffd36c0a44a3b4db0718f65d8cbc30, type: 3}
 --- !u!1 &1181685135
 GameObject:
   m_ObjectHideFlags: 0
