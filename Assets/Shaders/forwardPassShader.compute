@@ -12,18 +12,92 @@ struct splatStruct
 };
 
 // Bufory wejściowe (splat, camera, itd.)
-StructuredBuffer<splatStruct> splatBuffer : register(t0);   // Bufor dla splatów
+StructuredBuffer<float> splatBuffer : register(t0);   // Bufor dla splatów
 StructuredBuffer<float> cameraBuffer : register(t1);        // Bufor dla kamery (pozycja)
-Texture2D<float4> groundTruthImage : register(t2);         // Tekstura do porównania (ground truth)
+Texture2D<float4> groundTruthImage : register(t2);          // Tekstura do porównania (ground truth)
+StructuredBuffer<float> splatNumber : register(t3);                 // Liczba splatow, do pilnowania czy nie wyszlismy poza przedzial
 // Bufor wyjściowy: przechowywanie wyniku
 RWBuffer<float> lossBuffer : register(u0);
+cbuffer CameraData : register(b0) {
+    matrix ViewProjectionMatrix;
+}
+
+
+float3x3 ComputeCovariance(float3x3 R, float3 S) {
+    float3x3 S_matrix = float3x3(S.x, 0, 0, 0, S.y, 0, 0, 0, S.z); 
+    return mul(mul(R, S_matrix), mul(S_matrix, transpose(R)));
+}
+
+float3x3 QuaternionToRotationMatrix(float4 q) {
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+
+    return float3x3(
+        1.0 - 2.0 * (y * y + z * z),  2.0 * (x * y - w * z),  2.0 * (x * z + w * y),
+        2.0 * (x * y + w * z),  1.0 - 2.0 * (x * x + z * z),  2.0 * (y * z - w * x),
+        2.0 * (x * z - w * y),  2.0 * (y * z + w * x),  1.0 - 2.0 * (x * x + y * y)
+    );
+}
+
+float2x2 ComputeScreenCovariance(float3x3 Sigma3D, float3x2 J) {
+    // Sigma2D = J * Sigma3D * J^T
+    return mul(J, mul(Sigma3D, transpose(J)));
+}
+
+float ComputeGaussianInfluence(float2 pixelUV, float2 splatCenter, float2x2 Sigma2D_inv, float A) {
+    float2 x = pixelUV - splatCenter;  // Offset from splat center
+    float exponent = -0.5 * dot(x, mul(Sigma2D_inv, x));  // No need for transpose()
+    return A * exp(exponent);  // Final Gaussian influence
+}
+
+
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-   // Odczytaj dane z buforów
-    splatStruct splat = splatBuffer[id.x];  // Odczytaj splata dla danego wątku
-    float3 cameraPos = float3(cameraBuffer[0], cameraBuffer[1], cameraBuffer[2]);  // Odczytaj pozycję kamery (jako wektor 3D)
+    //splaty zostaly splaszczone - wszystkie dane sa obok siebie, potrzebna jest orientacja za pomoca liczby floatow w splacie 
+    int splatID = id.x*37;
+    int numberOfSplats = (int)splatNumber[0];
+
+    if(splatID/37<=numberOfSplats){
+
+        splatStruct splat;
+        splat.position = splatBuffer[splatID], splatBuffer[splatID + 1], splatBuffer[splatID + 2];
+        splat.scale =   splatBuffer[splatID + 3], splatBuffer[splatID + 4], splatBuffer[splatID + 5];
+        splat.rotation =splatBuffer[splatID + 6], splatBuffer[splatID + 7], splatBuffer[splatID + 8], splatBuffer[splatID + 9];
+
+        // Współczynniki SH są zapisane blokami po 9 wartości
+        for (int i = 0; i < 9; i++)
+        {
+            splat.shR[i] = splatBuffer[splatID + 10 + i];
+            splat.shG[i] = splatBuffer[splatID + 19 + i];
+            splat.shB[i] = splatBuffer[splatID + 28 + i];
+        }
+
+        float3 cameraPos = float3(cameraBuffer[0], cameraBuffer[1], cameraBuffer[2]);
+
+        float3x3 rotation3x3 = QuaternionToRotationMatrix(splat.rotation);
+
+        float3x3 covarianceMatrix3D = ComputeCovariance(rotation3x3,splat.scale);               //przeksztalcenie R i S w matryce covariancji
+
+        // Pozycja splata w przestrzeni świata
+        float4 worldPos = float4(splat.position, 1.0);
+
+        // Transformacja na ekran
+        float4 clipSpacePos = mul(ViewProjectionMatrix, worldPos);
+
+        // Rzutowanie do przestrzeni obrazu 2D (Normal Device Coordinates)
+        float2 screenPos = clipSpacePos.xy / clipSpacePos.w;
+
+        float3 screenX = mul(ViewProjectionMatrix, float4(1, 0, 0, 0)).xyz;
+        float3 screenY = mul(ViewProjectionMatrix, float4(0, 1, 0, 0)).xyz;
+        float3 screenZ = mul(ViewProjectionMatrix, float4(0, 0, 1, 0)).xyz;
+
+        // Tworzymy macierz Jacobiego (J) jako macierz 3x2
+        float3x2 J = float3x2(screenX.xy, screenY.xy, screenZ.xy);
+
+        float2x2 covarianceMatrix2D=ComputeScreenCovariance(covarianceMatrix3D, J);;           //uzyskanie matrycy 2D, ktora bedzie uzyta w wyznaczaniu wplywu splata
+
+   
 
     // Przykład: przekształć dane (np. oblicz wpływ splata na piksel w obrazie)
     // Pobierz piksel z ground truth
@@ -34,6 +108,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     
     float4 renderedColor = (splat.position+cameraPos,0);  // Funkcja do obliczeń
 
+    
+
 
     // Renderuj wynik do tekstury wyjściowej (np. porównanie)
     // Oblicz stratę (np. MSE)
@@ -42,7 +118,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // Zapisz wynik do bufora
     lossBuffer[id.x] = diff;  // Możesz używać tego samego indeksu do zapisywania wyniku dla każdego piksela
 
+    }
+
+
 }
+
 
 
 

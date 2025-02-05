@@ -34,6 +34,7 @@ public class mainTrainingLoop : MonoBehaviour
     private ComputeBuffer cameraBuffer;
     private Texture2D image;
     private ComputeBuffer lossBuffer;  // Bufor na wynik straty
+    private ComputeBuffer splatNumber;
 
     [SerializeField]
     string imagesPath;
@@ -185,6 +186,10 @@ public class mainTrainingLoop : MonoBehaviour
                 // Convert flattened data to an array
                 float[] flattenedArray = flattenedData.ToArray();
 
+                float[] splatN = { splatList.Count() };
+                splatNumber = new ComputeBuffer(splatN.Length,sizeof(float));
+                splatNumber.SetData(splatN);
+
                 // Create and set the ComputeBuffer
                 //ComputeBuffer splatBuffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
                 //splatBuffer.SetData(flattenedArray);
@@ -201,12 +206,22 @@ public class mainTrainingLoop : MonoBehaviour
                 float[] initialLossValue = new float[1] { 0 };
                 lossBuffer.SetData(initialLossValue);
 
+                // Pobranie macierzy widoku i projekcji kamery w Unity
+                Matrix4x4 viewMatrix = Camera.main.worldToCameraMatrix;   // Macierz widoku
+                Matrix4x4 projectionMatrix = Camera.main.projectionMatrix; // Macierz projekcji
+
+                // Po³¹czenie obu macierzy w jedn¹ ViewProjectionMatrix
+                Matrix4x4 viewProjectionMatrix = projectionMatrix * viewMatrix;
+
+                
                 //load bufer into compute shader
                 int kernelHandle = computeShader.FindKernel("CSMain");
                 computeShader.SetBuffer(kernelHandle, "splatBuffer", m_Buffer);
                 computeShader.SetBuffer(kernelHandle, "cameraBuffer", cameraBuffer);
                 computeShader.SetBuffer(kernelHandle, "lossBuffer", lossBuffer);
                 computeShader.SetTexture(kernelHandle, "groundTruthImage", image);
+                computeShader.SetBuffer(kernelHandle, "splatNumber", splatNumber);
+                computeShader.SetMatrix("ViewProjectionMatrix", viewProjectionMatrix);
 
                 // Dispatch the compute shader (example dispatch size)
                 computeShader.Dispatch(kernelHandle, splatList.Count / 64, 1, 1);
