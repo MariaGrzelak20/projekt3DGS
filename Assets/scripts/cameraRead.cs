@@ -114,18 +114,4 @@ public class cameraRead : MonoBehaviour
         return listCameraE;
     }
 
-    public List<cameraIntrinsic> readCameraIntrinsics() 
-    {
-        List<cameraIntrinsic> cameraIntrinsics = new List<cameraIntrinsic>();
-
-
-
-        return cameraIntrinsics;
-    }
-   void Start()
-    {
-       // List<cameraExtrinsic> l = readCameraExtrinsics();
-        
-       // List<cameraIntrinsic> f = readCameraIntrinsics();
-    }
 }

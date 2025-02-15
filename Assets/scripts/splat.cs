@@ -25,17 +25,19 @@ public class splat : MonoBehaviour
         //public Vector3[] covMatrix;
         public Vector3 scale;
         public Quaternion rotation;
+        public float opacity;
         public float[] shR;
         public float[] shG;
         public float[] shB;
 
 
-        public splatStruct(Vector3 pos,Vector3 sVec, Quaternion rotQuat, float[] r, float[] g, float[] b)
+        public splatStruct(Vector3 pos,Vector3 sVec, Quaternion rotQuat,float op, float[] r, float[] g, float[] b)
             {
             position = pos;
             //this.covMatrix = covMatrix;
             scale= sVec;
             rotation = rotQuat;
+            opacity = op;
             shR= r;
             shG = g;
             shB= b;

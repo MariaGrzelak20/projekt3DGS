@@ -34,7 +34,7 @@ public class mainTrainingLoop : MonoBehaviour
     private ComputeBuffer cameraBuffer;
     private Texture2D image;
     private ComputeBuffer lossBuffer;  // Bufor na wynik straty
-    private ComputeBuffer splatNumber;
+    private ComputeBuffer sizes;
 
     [SerializeField]
     string imagesPath;
@@ -55,7 +55,6 @@ public class mainTrainingLoop : MonoBehaviour
         //scaling points by 1000, because most of them fall to 0,00... and float shows this as 0
         float scaleFactor = 100f;
 
-        //imagesPath.Replace(@"\", "/");
         
         for (int i = 0; i < points.Count; i++) 
         {
@@ -87,7 +86,6 @@ public class mainTrainingLoop : MonoBehaviour
            
             double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition,pointsForMatrix);
 
-
             // Tworzymy macierz z danych
             Matrix<double> sigmaMatrix = DenseMatrix.OfArray(covariance);
 
@@ -109,17 +107,14 @@ public class mainTrainingLoop : MonoBehaviour
                 (float)scale[2]
                 );
 
-            
-
             Quaternion rotationQuat = ParseMatrixToQuaternion(R);
 
-            //w petli idacej po wszystkich kamerach, obliczamy sh dla danego splata
-
-            
+           //1 is for opacity, it's the starting value, that will later be improved, like all of splat's parameters
             splatList.Add(new splat.splatStruct(
                 meanPosition,
                 scaleVec,
                 rotationQuat,
+                1,
                 new float[] {meanColor.r,0,0,0,0,0,0,0,0 },
                 new float[] {meanColor.g,0,0,0,0,0,0,0,0 },
                 new float[] {meanColor.b,0,0,0,0,0,0,0,0 }
@@ -129,6 +124,7 @@ public class mainTrainingLoop : MonoBehaviour
         //Debug showing of values
         Debug.Log("Liczba splatow:" + splatList.Count());
         int iter = 0;
+
         //wyswietlanie danych
         foreach (splat.splatStruct spStr in splatList)
         {
@@ -186,10 +182,6 @@ public class mainTrainingLoop : MonoBehaviour
                 // Convert flattened data to an array
                 float[] flattenedArray = flattenedData.ToArray();
 
-                float[] splatN = { splatList.Count() };
-                splatNumber = new ComputeBuffer(splatN.Length,sizeof(float));
-                splatNumber.SetData(splatN);
-
                 // Create and set the ComputeBuffer
                 //ComputeBuffer splatBuffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
                 //splatBuffer.SetData(flattenedArray);
@@ -213,18 +205,39 @@ public class mainTrainingLoop : MonoBehaviour
                 // Po³¹czenie obu macierzy w jedn¹ ViewProjectionMatrix
                 Matrix4x4 viewProjectionMatrix = projectionMatrix * viewMatrix;
 
-                
+                //geting the proper size for shader - has to go over every pixel -needs proper size
+                // Get image size
+                int imageWidth = image.width;
+                int imageHeight = image.height;
+                int numSplats = splatList.Count; // Number of splats in the scene
+
+                // Define number of threads per workgroup
+                int threadsPerGroupX = 8;
+                int threadsPerGroupY = 8;
+
+                // Compute number of workgroups needed
+                int threadGroupsX = Mathf.CeilToInt(imageWidth / (float)threadsPerGroupX);
+                int threadGroupsY = Mathf.CeilToInt(imageHeight / (float)threadsPerGroupY);
+
+
+                //we get necesseary sizes - number of splats, image params - width and height
+
+                float[] splatN = { splatList.Count(),imageWidth,imageHeight };
+                sizes = new ComputeBuffer(splatN.Length, sizeof(float));
+                sizes.SetData(splatN);
+
+
                 //load bufer into compute shader
                 int kernelHandle = computeShader.FindKernel("CSMain");
                 computeShader.SetBuffer(kernelHandle, "splatBuffer", m_Buffer);
                 computeShader.SetBuffer(kernelHandle, "cameraBuffer", cameraBuffer);
                 computeShader.SetBuffer(kernelHandle, "lossBuffer", lossBuffer);
                 computeShader.SetTexture(kernelHandle, "groundTruthImage", image);
-                computeShader.SetBuffer(kernelHandle, "splatNumber", splatNumber);
+                computeShader.SetBuffer(kernelHandle, "sizes", sizes);
                 computeShader.SetMatrix("ViewProjectionMatrix", viewProjectionMatrix);
 
                 // Dispatch the compute shader (example dispatch size)
-                computeShader.Dispatch(kernelHandle, splatList.Count / 64, 1, 1);
+                computeShader.Dispatch(kernelHandle, threadGroupsX,threadGroupsY, 1);
 
 
                 float[] lossResults = new float[1];
@@ -270,6 +283,7 @@ public class mainTrainingLoop : MonoBehaviour
         flattenedData.AddRange(splat.shR);
         flattenedData.AddRange(splat.shG);
         flattenedData.AddRange(splat.shB);
+        flattenedData.AddRange(new float[] { splat.opacity });
 
         return flattenedData.ToArray();
     }
