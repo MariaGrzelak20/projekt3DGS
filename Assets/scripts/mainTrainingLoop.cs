@@ -67,6 +67,7 @@ public class mainTrainingLoop : MonoBehaviour
         //assigning values to splats and creating  a list of them, here also decleare spherical harmonic coefficients
         foreach (var point in points)
         {
+            /*
             // Calculate distances from the current point to all other points
             var distances = points
                 .Where(p => (p.position - point.position).sqrMagnitude > 1e-6f)
@@ -85,6 +86,16 @@ public class mainTrainingLoop : MonoBehaviour
             Vector3[] pointsForMatrix = {group[0].position , group[1].position , group[2].position };
            
             double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition,pointsForMatrix);
+            */
+            
+            Vector3 meanPosition = point.position;
+            Color meanColor = point.color;
+
+            Vector3[] pointsForMatrix = { point.position };
+
+            double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition, pointsForMatrix);
+
+
 
             // Tworzymy macierz z danych
             Matrix<double> sigmaMatrix = DenseMatrix.OfArray(covariance);
