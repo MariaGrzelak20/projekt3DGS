@@ -161,18 +161,27 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         float2x2 covarianceMatrix2D=ComputeScreenCovariance(covarianceMatrix3D, J);;           //uzyskanie matrycy 2D, ktora bedzie uzyta w wyznaczaniu wplywu splata
         
         
-        float3 viewDir = normalize(splat.position - cameraPos);
+        float3 viewDir = splat.position - cameraPos;
 
         float gaussianInfluence = ComputeGaussianInfluence(id.xy,splat.position,covarianceMatrix2D,splat.opacity);
         float3 renderedCol = ComputeSplatColor(viewDir,splat.shR,splat.shG,splat.shB)*gaussianInfluence;
         
-        finalSplatColor = finalSplatColor * (1.0 - splat.opacity) + renderedCol * splat.opacity;
+
+        //gaussianInfluence = saturate(gaussianInfluence * splat.opacity); // Ograniczenie wpływu
+
+
+
+        // 3DGS stosuje "soft clamp", aby uniknąć przepaleń
+        //renderedCol = renderedCol / (renderedCol + 1.0); 
+
+        finalSplatColor += renderedCol;
+        
+        //finalSplatColor = finalSplatColor * (1.0 - splat.opacity) + renderedCol * splat.opacity;
         //finalSplatColor.xyz=renderedCol+finalSplatColor;//finalSplatColor+renderedCol;
-       
+     
         }
     }
-    
-    
+    finalSplatColor = finalSplatColor / (1.0 + finalSplatColor);
     
     Result[id.xy]= float4(finalSplatColor,1);
 

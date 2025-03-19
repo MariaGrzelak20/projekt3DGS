@@ -770,7 +770,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 304ce3ef0bfd66945aab1249a888480b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  imagesPath: C:\Users\g7238\Desktop\inzynierkowe\testFrames
+  imagesPath: C:\Users\g7238\Desktop\inzynierkowe\noweDane\images
   computeShader: {fileID: 7200000, guid: e1e1bf6dd738cac45b0752f7dbbda506, type: 3}
   dssimShader: {fileID: 7200000, guid: a5a774046fef7aa41a88c17209d99357, type: 3}
   l1shader: {fileID: 7200000, guid: dace244427779014fb484b6ee13d4414, type: 3}

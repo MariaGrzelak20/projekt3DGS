@@ -306,7 +306,7 @@ public class mainTrainingLoop : MonoBehaviour
                 {
                     Debug.LogError("Nie znaleziono RawImage w scenie!");
                 }
-                CheckTextureContents(outputTexture,imageR);
+                //CheckTextureContents(outputTexture,imageR);
 
                 byte[] bytes = debugTexture.EncodeToPNG(); // Mo¿esz u¿yæ EncodeToJPG()
                 System.IO.File.WriteAllBytes(Application.dataPath + "/" + "fileName.png", bytes);
@@ -465,16 +465,17 @@ public class mainTrainingLoop : MonoBehaviour
         for (int i = 0; i < tempTexture.width; i++)
         {
             for (int j = 0; j < tempTexture.height; j++)
-            {
-                if (tempTexture.GetPixel(i, j) == groundTruthImage.GetPixel(i, j))
+            { 
+                Debug.Log("Pixel color nr:" + i + "  "+j+" " + tempTexture.GetPixel(i, j));
+               /* if (tempTexture.GetPixel(i, j) == groundTruthImage.GetPixel(i, j))
                 {
-                    Debug.Log("Pixel color nr:" + i + "  "+j+" " + tempTexture.GetPixel(i, j));
+                   
                     num++;
 
                     // Odczytanie wartoœci z obu obrazów
                     Color gtPixel = groundTruthImage.GetPixel(i, j);
                     Debug.Log($"Ground Truth Pixel ({i},{j}): {gtPixel}");
-                }
+                }*/
             }
         }
         Debug.Log("Ilosc  zakolorowanych pikseli:" + num);

@@ -15,7 +15,7 @@ public class points3DRead : MonoBehaviour
     [SerializeField]
     private String plyFileName = "model.ply";
     [SerializeField]
-    private int pointNumberLimit;
+    private int pointNumberLimit=0;
 
 
 
@@ -49,8 +49,8 @@ public class points3DRead : MonoBehaviour
             string temp = "";
             string[] tempArr = new string[7];
 
-            if (pointNumberLimit == 0||pointNumberLimit>splitContent.Count()) { pointNumberLimit = 1000; }
-
+            if (pointNumberLimit == 0||pointNumberLimit>splitContent.Count()) { pointNumberLimit = 5000; }
+            Debug.Log(pointNumberLimit);
             int iterationNum = 0;
             foreach (string con in splitContent)
             {
@@ -68,7 +68,7 @@ public class points3DRead : MonoBehaviour
                     iterationNum++;
                 }
 
-                //if (iterationNum == pointNumberLimit) break;
+                if (iterationNum == pointNumberLimit) break;
 
             }
 
