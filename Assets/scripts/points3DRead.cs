@@ -68,7 +68,7 @@ public class points3DRead : MonoBehaviour
                     iterationNum++;
                 }
 
-                if (iterationNum == pointNumberLimit) break;
+                //if (iterationNum == pointNumberLimit) break;
 
             }
 
@@ -94,12 +94,12 @@ public class points3DRead : MonoBehaviour
                 .Where(p => p.position != point.position) // Exclude the current point
                 .Select(p => new { Point = p, Distance = Vector3.Distance(point.position, p.position) })
                 .OrderBy(x => x.Distance) // Sort by distance
-                .Take(2) // Take the two closest points
+                .Take(3) // Take the two closest points
                 .Select(x => x.Point) // Get the points only
                 .ToList();
 
             // Add the current point and its two closest points as a group
-            var group = new List<splatPoint> { point };
+            var group = new List<splatPoint> { };// { point };
             group.AddRange(distances);
 
             groups.Add(group);

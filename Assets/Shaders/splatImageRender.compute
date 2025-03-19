@@ -123,10 +123,6 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         
         splat.position = float3( splatBuffer[splatID], splatBuffer[splatID + 1], splatBuffer[splatID + 2]);
         splat.scale =  float3( splatBuffer[splatID + 3], splatBuffer[splatID + 4], splatBuffer[splatID + 5]);
-        float x = splatBuffer[splatID + 3];
-        float y = splatBuffer[splatID + 4];
-        float z = splatBuffer[splatID + 5];
-        scale=float3(x,y,z);
         splat.rotation =float4(splatBuffer[splatID + 6], splatBuffer[splatID + 7], splatBuffer[splatID + 8], splatBuffer[splatID + 9]);
 
         // Współczynniki SH są zapisane blokami po 9 wartości
@@ -170,7 +166,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         float gaussianInfluence = ComputeGaussianInfluence(id.xy,splat.position,covarianceMatrix2D,splat.opacity);
         float3 renderedCol = ComputeSplatColor(viewDir,splat.shR,splat.shG,splat.shB)*gaussianInfluence;
         
-        finalSplatColor.xyz=renderedCol+finalSplatColor;//finalSplatColor+renderedCol;
+        finalSplatColor = finalSplatColor * (1.0 - splat.opacity) + renderedCol * splat.opacity;
+        //finalSplatColor.xyz=renderedCol+finalSplatColor;//finalSplatColor+renderedCol;
        
         }
     }

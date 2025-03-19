@@ -52,6 +52,8 @@ public class mainTrainingLoop : MonoBehaviour
 
     [SerializeField]
     GameObject planeRenderSplat;
+    private float totalDssimLoss = 0;
+    private float totalL1Loss = 0;
 
 
     void Start()
@@ -72,7 +74,7 @@ public class mainTrainingLoop : MonoBehaviour
         for (int i = 0; i < points.Count; i++) 
         {
             var p = points[i]; // Copy the struct (value type)
-            p.position *= scaleFactor; // Modify the position
+           // p.position *= scaleFactor; // Modify the position
             points[i] = p; // Assign the modified struct back to the list
         }
 
@@ -99,7 +101,7 @@ public class mainTrainingLoop : MonoBehaviour
 
                 // Skala splata jako œrednia odleg³oœæ do 3 punktów
                 Vector3 scale = new Vector3(meanDist, meanDist, meanDist);
-
+            //Debug.Log("Skala: " + meanDist);
             /*
                 Vector3[] pointsForMatrix = { point.position };
 
@@ -178,7 +180,7 @@ public class mainTrainingLoop : MonoBehaviour
         for (int i = 0; i < 1; i++) 
         {   
 
-            for (int j = 0; j < 4;j++)//cameraValues.Count(); j++) 
+            for (int j = 10; j < 11;j++)//cameraValues.Count(); j++) 
             {
                 Vector3 camPos = cameraValues[j].cameraPosition;
                 string imageN = cameraValues[j].imageName    
@@ -306,7 +308,11 @@ public class mainTrainingLoop : MonoBehaviour
                 }
                 CheckTextureContents(outputTexture,imageR);
 
-                
+                byte[] bytes = debugTexture.EncodeToPNG(); // Mo¿esz u¿yæ EncodeToJPG()
+                System.IO.File.WriteAllBytes(Application.dataPath + "/" + "fileName.png", bytes);
+                Debug.Log("Zapisano teksturê jako: " + Application.dataPath + "/" + "fileName");
+
+
                 // Zwolnienie zasobów
                 m_Buffer.Release();
                 cameraBuffer.Release();
@@ -335,7 +341,8 @@ public class mainTrainingLoop : MonoBehaviour
                 {
                     totalLoss += val;
                 }
-                float meanDssimLoss = totalLoss / bufferSize;
+                float meanDssimLoss = totalLoss ;
+                totalDssimLoss += meanDssimLoss;
 
                 Debug.Log($" Œredni Dssim Loss: {meanDssimLoss}");
                
@@ -366,14 +373,19 @@ public class mainTrainingLoop : MonoBehaviour
                     totalLoss2 += val;
                     
                 }
-                float meanL1Loss = totalLoss2 / bufferSize2;
+                float meanL1Loss = totalLoss2 ;
+                totalL1Loss += meanL1Loss;
 
-                Debug.Log($" Œredni L1 Loss: {meanL1Loss}");
+               // Debug.Log($" Œredni L1 Loss: {meanL1Loss}");
                
                 //zwolnienie zasobow
                 //zwolnienie zasobow
                 lossBuffer2.Release();
                 
+                sizes.Release();
+
+                //Debug.Log("Pozycja kamery"+camPos.ToString());
+
                 //sum the loss?
 
                // Mat img1 = TextureToMat(imageR);
@@ -388,6 +400,8 @@ public class mainTrainingLoop : MonoBehaviour
 
 
             }
+
+            Debug.Log("Osttateczne bledy: " + totalDssimLoss + " " + totalL1Loss);
 
             //for all, ALL parameters - xyz of position, rgb of colors, R and S, we get gradient using the parameter and loss
             //from that we get new, better value and assign it to the splat
