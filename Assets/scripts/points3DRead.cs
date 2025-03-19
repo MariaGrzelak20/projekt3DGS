@@ -134,7 +134,7 @@ public class points3DRead : MonoBehaviour
             
 
             meanColor.Add(meanCol);
-            Debug.Log("Kolor:"+meanCol.ToString());  
+            //Debug.Log("Kolor:"+meanCol.ToString());  
             
         }
 

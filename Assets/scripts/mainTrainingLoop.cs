@@ -13,6 +13,11 @@ using UnityEngine.Windows.WebCam;
 using System;
 using UnityEngine.Rendering;
 using UnityEngine.UIElements;
+using UnityEngine.UI;
+using UnityEngine;
+//using Emgu.CV;
+//using Emgu.CV.CvEnum;
+//using Emgu.CV.Structure;
 
 public class mainTrainingLoop : MonoBehaviour
 {
@@ -32,14 +37,22 @@ public class mainTrainingLoop : MonoBehaviour
     /// 
     private ComputeBuffer m_Buffer;
     private ComputeBuffer cameraBuffer;
-    private Texture2D image;
-    private ComputeBuffer lossBuffer;  // Bufor na wynik straty
+    private Texture2D imageR;               //image Read from file (ground truth images)
     private ComputeBuffer sizes;
+
+    //buffers for loss shader
+    private ComputeBuffer lossBufferDssim;  // Bufor na wynik straty
+    private ComputeBuffer lossBufferL1;     // Bufor na wynik straty
 
     [SerializeField]
     string imagesPath;
     public ComputeShader computeShader;
-    
+    public ComputeShader dssimShader;
+    public ComputeShader l1shader;
+
+    [SerializeField]
+    GameObject planeRenderSplat;
+
 
     void Start()
     {
@@ -67,35 +80,30 @@ public class mainTrainingLoop : MonoBehaviour
         //assigning values to splats and creating  a list of them, here also decleare spherical harmonic coefficients
         foreach (var point in points)
         {
-            /*
-            // Calculate distances from the current point to all other points
-            var distances = points
-                .Where(p => (p.position - point.position).sqrMagnitude > 1e-6f)
-                .Select(p => new { Point = p, Distance = Vector3.Distance(point.position, p.position) })
-                .OrderBy(x => x.Distance) // Sort by distance
-                .Take(2) // Take the two closest points
-                .Select(x => x.Point) // Get the points only
-                .ToList();
-
-            // Add the current point and its two closest points as a group
-            var group = new List<splatPoint> { point };
-            group.AddRange(distances);
-            Vector3 meanPosition = ( group[0].position+ group[1].position + group[2].position) / 3;
-            Color meanColor = (point.color + group[0].color + group[1].color) / 3;
-
-            Vector3[] pointsForMatrix = {group[0].position , group[1].position , group[2].position };
-           
-            double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition,pointsForMatrix);
-            */
+            
             
             Vector3 meanPosition = point.position;
             Color meanColor = point.color;
 
-            Vector3[] pointsForMatrix = { point.position };
+                // ZnajdŸ 3 najbli¿sze punkty
+                var nearestPoints = points
+                    .Where(p => p.position != point.position) // Pomijamy sam punkt
+                    .Select(p => new { Point = p, Distance = Vector3.Distance(p.position, point.position) })
+                    .OrderBy(p => p.Distance)
+                    .Take(3)
+                    .Select(p => p.Point)
+                    .ToList();
+
+                // Oblicz œredni¹ odleg³oœæ do tych punktów
+                float meanDist = nearestPoints.Average(p => Vector3.Distance(p.position, point.position));
+
+                // Skala splata jako œrednia odleg³oœæ do 3 punktów
+                Vector3 scale = new Vector3(meanDist, meanDist, meanDist);
+
+            /*
+                Vector3[] pointsForMatrix = { point.position };
 
             double[,] covariance = splatFunctions.getCovarianceMatrix(meanPosition, pointsForMatrix);
-
-
 
             // Tworzymy macierz z danych
             Matrix<double> sigmaMatrix = DenseMatrix.OfArray(covariance);
@@ -109,28 +117,34 @@ public class mainTrainingLoop : MonoBehaviour
             // Skala (S) - pierwiastki z wartoœci w³asnych
             Vector<double> eigenValues = evd.EigenValues.Real(); // Wartoœci w³asne
 
-            Vector<double> scale = eigenValues.PointwiseSqrt();  // Pierwiastki
+            //Vector<double> scale = eigenValues.PointwiseSqrt();  // Pierwiastki
+            
+            //Debug.Log("EignVal: " + eigenValues);
+            */
 
 
-            Vector3 scaleVec = new Vector3(
-                (float)scale[0],
-                (float)scale[1],
-                (float)scale[2]
-                );
+            //scale Vector
+            //Vector3 scaleVec = new Vector3(1f,1f,1f);
 
-            Quaternion rotationQuat = ParseMatrixToQuaternion(R);
+            //Quaternion rotationQuat = ParseMatrixToQuaternion(R);
+            Quaternion rotationQuat = new Quaternion(1,0,0,0);
+
+            
 
            //1 is for opacity, it's the starting value, that will later be improved, like all of splat's parameters
             splatList.Add(new splat.splatStruct(
                 meanPosition,
-                scaleVec,
+                scale,
                 rotationQuat,
                 1,
-                new float[] {meanColor.r,0,0,0,0,0,0,0,0 },
-                new float[] {meanColor.g,0,0,0,0,0,0,0,0 },
-                new float[] {meanColor.b,0,0,0,0,0,0,0,0 }
+                new float[] { meanColor.r, 0.3f, 0.3f, 0.3f, 0, 0, 0, 0, 0 },
+                new float[] { meanColor.g, 0.3f, 0.3f, 0.3f, 0, 0, 0, 0, 0 },
+                new float[] { meanColor.b, 0.3f, 0.3f, 0.3f, 0, 0, 0, 0, 0 }
                 ));
+
+           
         }
+        
         
         //Debug showing of values
         Debug.Log("Liczba splatow:" + splatList.Count());
@@ -142,7 +156,7 @@ public class mainTrainingLoop : MonoBehaviour
 
            if ((iter%10)==0)//codziesiaty
            {
-                Debug.Log("Dane splata: " +
+                Debug.Log("Dane splata: nr splata:"+(iter+1) +
                     "\nPosition: " + spStr.position
                     + "\n S: " + spStr.scale +
                     "\n R: " + spStr.rotation +
@@ -153,6 +167,8 @@ public class mainTrainingLoop : MonoBehaviour
            }
             iter++;
         }
+        
+
 
         //loop1 - general number of complete training iterations
         //complete iteration - iteration that went through all of camera pov, then got gradients for all of splats and upgraded them
@@ -176,8 +192,8 @@ public class mainTrainingLoop : MonoBehaviour
                
                 //read image and load it into texture 2d
                 byte[] file = File.ReadAllBytes(path);
-                image = new Texture2D(2, 2);
-                image.LoadImage(file);
+                imageR = new Texture2D(2, 2);
+                imageR.LoadImage(file);
 
                 //prepeare compute bufer- inside data of splats, current camera position and image used for comparison
                 //m_Buffer = new ComputeBuffer(splatList.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(splat.splatStruct)));
@@ -192,11 +208,11 @@ public class mainTrainingLoop : MonoBehaviour
 
                 // Convert flattened data to an array
                 float[] flattenedArray = flattenedData.ToArray();
+                
+                
 
-                // Create and set the ComputeBuffer
-                //ComputeBuffer splatBuffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
-                //splatBuffer.SetData(flattenedArray);
                 m_Buffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
+
                 m_Buffer.SetData(flattenedArray);
 
                 
@@ -204,10 +220,7 @@ public class mainTrainingLoop : MonoBehaviour
                 cameraBuffer = new ComputeBuffer (camPosArr.Length, sizeof(float));
                 cameraBuffer.SetData(camPosArr);
 
-                // Bufor na wynik straty
-                ComputeBuffer lossBuffer = new ComputeBuffer(1, sizeof(float));
-                float[] initialLossValue = new float[1] { 0 };
-                lossBuffer.SetData(initialLossValue);
+                
 
                 // Pobranie macierzy widoku i projekcji kamery w Unity
                 Matrix4x4 viewMatrix = Camera.main.worldToCameraMatrix;   // Macierz widoku
@@ -218,8 +231,8 @@ public class mainTrainingLoop : MonoBehaviour
 
                 //geting the proper size for shader - has to go over every pixel -needs proper size
                 // Get image size
-                int imageWidth = image.width;
-                int imageHeight = image.height;
+                int imageWidth = imageR.width;
+                int imageHeight = imageR.height;
                 int numSplats = splatList.Count; // Number of splats in the scene
 
                 // Define number of threads per workgroup
@@ -236,41 +249,144 @@ public class mainTrainingLoop : MonoBehaviour
                 float[] splatN = { splatList.Count(),imageWidth,imageHeight };
                 sizes = new ComputeBuffer(splatN.Length, sizeof(float));
                 sizes.SetData(splatN);
+                
+                
 
-
-                //load bufer into compute shader
+                //load bufer into compute shader - for now it just generates image from splats
                 int kernelHandle = computeShader.FindKernel("CSMain");
                 computeShader.SetBuffer(kernelHandle, "splatBuffer", m_Buffer);
                 computeShader.SetBuffer(kernelHandle, "cameraBuffer", cameraBuffer);
-                computeShader.SetBuffer(kernelHandle, "lossBuffer", lossBuffer);
-                computeShader.SetTexture(kernelHandle, "groundTruthImage", image);
+                computeShader.SetTexture(kernelHandle, "groundTruthImage", imageR);
                 computeShader.SetBuffer(kernelHandle, "sizes", sizes);
                 computeShader.SetMatrix("ViewProjectionMatrix", viewProjectionMatrix);
 
+
+                RenderTexture outputTexture;
+                outputTexture = new RenderTexture(imageWidth, imageHeight, 0, RenderTextureFormat.ARGBFloat);
+                outputTexture.enableRandomWrite = true;
+                outputTexture.Create();
+
+                // Przekazanie tekstury do Compute Shader
+                computeShader.SetTexture(kernelHandle, "Result", outputTexture);
+                
                 // Dispatch the compute shader (example dispatch size)
                 computeShader.Dispatch(kernelHandle, threadGroupsX,threadGroupsY, 1);
+                
 
+                RenderTexture.active = outputTexture;
+                Texture2D debugTexture = new Texture2D(outputTexture.width, outputTexture.height, TextureFormat.RGBAFloat, false);
+                debugTexture.ReadPixels(new Rect(0, 0, outputTexture.width, outputTexture.height), 0, 0);
+                debugTexture.Apply();
 
-                float[] lossResults = new float[1];
-                lossBuffer.GetData(lossResults);
-
-                // Oblicz ostateczn¹ stratê (np. suma strat wszystkich pikseli)
-                float totalLoss = 0f;
-                for (int k = 0; k < lossResults.Length; k++)
+                // Przypisanie wyniku do materia³u w Unity
+                MeshRenderer meshRenderer = planeRenderSplat.GetComponent<MeshRenderer>();
+                if (meshRenderer != null)
                 {
-                    totalLoss += lossResults[i];  // Zbieranie wyników
+                    if (meshRenderer.material == null)
+                    {
+                        Debug.LogWarning("Brak materia³u, tworzê nowy.");
+                        meshRenderer.material = new Material(Shader.Find("Standard"));
+                    }
+                    meshRenderer.material.SetTexture("_MainTex", outputTexture);
                 }
+                RawImage image = FindObjectOfType<RawImage>(); // Znajduje pierwszy `RawImage` w scenie
 
-                Debug.Log("Total Loss: " + totalLoss);
+                if (image != null)
+                {
+                  
+                    image.texture = debugTexture;
+                    RectTransform rt = image.GetComponent<RectTransform>();
 
+                    // Ustawienie rozmiaru RawImage na rozmiar tekstury
+                    rt.sizeDelta = new Vector2(debugTexture.width, debugTexture.height);
+                }
+                else
+                {
+                    Debug.LogError("Nie znaleziono RawImage w scenie!");
+                }
+                CheckTextureContents(outputTexture,imageR);
+
+                
                 // Zwolnienie zasobów
                 m_Buffer.Release();
                 cameraBuffer.Release();
-                lossBuffer.Release(); 
 
-                float lossShaderOutput = totalLoss;
-                //we need combined loss value for gradients and splat update
-                lossTotalValue += lossShaderOutput;
+                // Bufor na wynik straty
+                int bufferSize = imageWidth * imageHeight; // Jeden float na piksel
+                ComputeBuffer lossBuffer = new ComputeBuffer(bufferSize, sizeof(float));
+                float[] initialLossValue = new float[1] { 0 };
+                lossBuffer.SetData(initialLossValue);
+
+                
+                //buffer for dssim
+                int kernelHandleDssim = dssimShader.FindKernel("Dssim");
+                dssimShader.SetTexture(kernelHandleDssim, "groundTruthImage", imageR);
+                dssimShader.SetTexture(kernelHandleDssim, "renderedImage", outputTexture);
+                dssimShader.SetBuffer(kernelHandleDssim, "sizes", sizes);
+                dssimShader.SetBuffer(kernelHandleDssim, "lossBuffer", lossBuffer);
+                dssimShader.Dispatch(0, imageWidth / 8, imageHeight / 8, 1);
+                float[] lossData= new float[bufferSize];
+                // Pobranie danych z ComputeBuffer do CPU
+                lossBuffer.GetData(lossData);
+
+                // Przetwarzanie wartoœci - obliczenie œredniego L1 Loss
+                float totalLoss = 0;
+                foreach (var val in lossData)
+                {
+                    totalLoss += val;
+                }
+                float meanDssimLoss = totalLoss / bufferSize;
+
+                Debug.Log($" Œredni Dssim Loss: {meanDssimLoss}");
+               
+                //zwolnienie zasobow
+                lossBuffer.Release();
+
+
+                // Bufor na wynik straty
+                int bufferSize2 = imageWidth * imageHeight; // Jeden float na piksel
+                ComputeBuffer lossBuffer2 = new ComputeBuffer(bufferSize2, sizeof(float));
+                float[] initialLossValue2 = new float[1] { 0 };
+                lossBuffer2.SetData(initialLossValue2);
+                //buffer for l1
+                int kernelHandleL1loss = l1shader.FindKernel("ComputeL1Loss");
+                l1shader.SetTexture(kernelHandleL1loss, "groundTruthImage", imageR);
+                l1shader.SetTexture(kernelHandleL1loss, "renderedImage", outputTexture);
+                l1shader.SetBuffer(kernelHandleL1loss, "sizes", sizes);
+                l1shader.SetBuffer(kernelHandleL1loss, "lossBuffer", lossBuffer2);
+                l1shader.Dispatch(0, imageWidth / 8, imageHeight / 8, 1);
+                float[] lossData2 = new float[bufferSize2];
+                // Pobranie danych z ComputeBuffer do CPU
+                lossBuffer2.GetData(lossData2);
+
+                // Przetwarzanie wartoœci - obliczenie œredniego L1 Loss
+                float totalLoss2 = 0;
+                foreach (var val in lossData2)
+                {
+                    totalLoss2 += val;
+                    
+                }
+                float meanL1Loss = totalLoss2 / bufferSize2;
+
+                Debug.Log($" Œredni L1 Loss: {meanL1Loss}");
+               
+                //zwolnienie zasobow
+                //zwolnienie zasobow
+                lossBuffer2.Release();
+                
+                //sum the loss?
+
+               // Mat img1 = TextureToMat(imageR);
+               // Mat img2 = TextureToMat(debugTexture);
+
+                // Oblicz DSSIM i L1 Loss
+                //double dssim = ComputeDSSIM(img1, img2);
+                //double l1Loss = ComputeL1Loss(img1, img2);
+
+                //Debug.Log($"DSSIM: {dssim}");
+                //Debug.Log($"L1 Loss: {l1Loss}");
+
+
             }
 
             //for all, ALL parameters - xyz of position, rgb of colors, R and S, we get gradient using the parameter and loss
@@ -280,6 +396,77 @@ public class mainTrainingLoop : MonoBehaviour
 
         //change shader from compute to shader showing the result - for example the GaussianRender from that finished gaussian renderer in unity
     }
+    /*
+    Mat TextureToMat(Texture2D texture)
+    {
+        byte[] imageData = texture.EncodeToPNG();
+        Mat mat = new Mat();
+        CvInvoke.Imdecode(new Emgu.CV.Util.VectorOfByte(imageData), ImreadModes.Grayscale, mat);
+        return mat;
+    }
+
+    double ComputeDSSIM(Mat img1, Mat img2)
+    {
+        // Konwersja do 32-bitowej precyzji
+        Mat img1Float = new Mat();
+        Mat img2Float = new Mat();
+        img1.ConvertTo(img1Float, DepthType.Cv32F);
+        img2.ConvertTo(img2Float, DepthType.Cv32F);
+
+        // Obliczenie SSIM przez mno¿enie pikseli
+        Mat product = new Mat();
+        CvInvoke.Multiply(img1Float, img2Float, product);
+
+        MCvScalar meanSSIM = CvInvoke.Mean(product);
+        double ssim = meanSSIM.V0;  // Pobranie wartoœci
+
+        return (1.0 - ssim) / 2.0;  // DSSIM = (1 - SSIM) / 2
+    }
+   
+    double ComputeL1Loss(Mat img1, Mat img2)
+    {
+        Mat absDiff = new Mat();
+        CvInvoke.AbsDiff(img1, img2, absDiff);
+        MCvScalar l1Loss = CvInvoke.Mean(absDiff);
+        return l1Loss.V0;
+    }
+ */
+    void CheckTextureContents(RenderTexture renderTexture, Texture2D groundTruthImage)
+    {
+        RenderTexture.active = renderTexture;
+        Texture2D tempTexture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBAFloat, false);
+        tempTexture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
+        tempTexture.Apply();
+
+        Color firstPixel = tempTexture.GetPixel(0, 0);
+        Color centerPixel = tempTexture.GetPixel(renderTexture.width / 2, renderTexture.height / 2);
+        Color lastPixel = tempTexture.GetPixel(renderTexture.width - 1, renderTexture.height - 1);
+
+        // Debug.Log($"Pixel (0,0): {firstPixel}");
+        // Debug.Log($"Pixel (center): {centerPixel}");
+        // Debug.Log($"Pixel (last): {lastPixel}");
+        Debug.Log("Ilosc pikseli:" + renderTexture.width * renderTexture.height);
+        int num = 0;
+        Color sprawdzajacy = new Color(0, 0, 0);
+        for (int i = 0; i < tempTexture.width; i++)
+        {
+            for (int j = 0; j < tempTexture.height; j++)
+            {
+                if (tempTexture.GetPixel(i, j) == groundTruthImage.GetPixel(i, j))
+                {
+                    Debug.Log("Pixel color nr:" + i + "  "+j+" " + tempTexture.GetPixel(i, j));
+                    num++;
+
+                    // Odczytanie wartoœci z obu obrazów
+                    Color gtPixel = groundTruthImage.GetPixel(i, j);
+                    Debug.Log($"Ground Truth Pixel ({i},{j}): {gtPixel}");
+                }
+            }
+        }
+        Debug.Log("Ilosc  zakolorowanych pikseli:" + num);
+    }
+
+
     public float[] Flatten(splatStruct splat)
     {
         
@@ -299,7 +486,7 @@ public class mainTrainingLoop : MonoBehaviour
         return flattenedData.ToArray();
     }
 
-    Quaternion ParseMatrixToQuaternion(Matrix<double> R)
+    Quaternion ParseMatrixToQuaternion(MathNet.Numerics.LinearAlgebra.Matrix<double> R)
     {
         float w, x, y, z;
 
@@ -343,4 +530,12 @@ public class mainTrainingLoop : MonoBehaviour
         return new Quaternion(x, y, z, w);
     }
 
+
+    //public static double V3Distance(Vector3[] p1, Vector3[] p2)
+    //{
+        //return Math.Sqrt(
+           // Math.Pow(p1[0] - p2[0], 2) +
+           // Math.Pow(p1[1] - p2[1], 2) +
+           // Math.Pow(p1[2] - p2[2], 2));
+   // }
 }

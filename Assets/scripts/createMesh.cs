@@ -32,7 +32,7 @@ public class createMesh : MonoBehaviour
 
         // Recalculate bounds
         mesh.RecalculateBounds();
-        Debug.Log($"Mesh bounds: {mesh.bounds}");
+        //Debug.Log($"Mesh bounds: {mesh.bounds}");
 
 
         // Assign mesh to the MeshFilter
@@ -44,10 +44,11 @@ public class createMesh : MonoBehaviour
         MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
         meshRenderer.material = customMaterial;
 
-        foreach (Vector3 a in GetComponent<MeshFilter>().mesh.vertices)
+       /* foreach (Vector3 a in GetComponent<MeshFilter>().mesh.vertices)
         {
             Debug.Log(a);
         }
+       */
 
         points = new List<Vector3>();
 

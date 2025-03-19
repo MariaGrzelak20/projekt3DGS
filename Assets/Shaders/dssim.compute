@@ -1,0 +1,78 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel Dssim
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+//dla krawedzi jest mirror padding 
+//sizes ma rozmiary na indeksie 1 i 2
+Texture2D<float4> groundTruthImage ;          // Tekstura do porównania (ground truth)
+Texture2D<float4> renderedImage;
+StructuredBuffer<float> sizes;                 // Liczba splatow, do pilnowania czy nie wyszlismy poza przedzial
+// Bufor wyjściowy: przechowywanie wyniku
+RWBuffer<float> lossBuffer;
+
+//RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void Dssim (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    int imageWidth = sizes[1];
+int imageHeight = sizes[2];
+
+int2 pixelCoords = id.xy;
+
+float meanA = 0.0, meanB = 0.0;
+float varA = 0.0, varB = 0.0, covAB = 0.0;
+int count = 0;
+
+// Sprawdzamy, czy pełne okno 8×8 mieści się w obrazie
+if (pixelCoords.x + 8 < imageWidth && pixelCoords.y + 8 < imageHeight) {
+    int xMax = pixelCoords.x + 8;
+    int yMax = pixelCoords.y + 8;
+
+    for (int i = pixelCoords.x; i < xMax; i++) {
+        for (int j = pixelCoords.y; j < yMax; j++) {
+            int2 sampleCoords = int2(i, j);
+
+            // Pobranie pikseli
+            float3 colorA = groundTruthImage[sampleCoords].rgb;
+            float3 colorB = renderedImage[sampleCoords].rgb;
+
+            // Konwersja do skali szarości
+            float lumA = dot(colorA, float3(0.2989, 0.5870, 0.1140));
+            float lumB = dot(colorB, float3(0.2989, 0.5870, 0.1140));
+
+            meanA += lumA;
+            meanB += lumB;
+            varA += lumA * lumA;
+            varB += lumB * lumB;
+            covAB += lumA * lumB;
+
+            count++;
+        }
+    }
+
+    // Obliczenie średnich wartości
+    meanA /= count;
+    meanB /= count;
+
+    // Obliczenie wariancji i kowariancji
+    varA = (varA / count) - (meanA * meanA);
+    varB = (varB / count) - (meanB * meanB);
+    covAB = (covAB / count) - (meanA * meanB);
+
+    // Stałe SSIM
+    float C1 = 0.01 * 0.01;
+    float C2 = 0.03 * 0.03;
+
+    // Obliczenie SSIM
+    float ssim = (2.0 * meanA * meanB + C1) * (2.0 * covAB + C2) /
+                 ((meanA * meanA + meanB * meanB + C1) * (varA + varB + C2));
+
+    // Zapisanie SSIM do obrazu wynikowego
+    //Result[pixelCoords] = float4(ssim, ssim, ssim, 1.0);
+    // Zapis do bufora loss
+    lossBuffer[pixelCoords.y * imageWidth + pixelCoords.x]=ssim ; 
+}
+}

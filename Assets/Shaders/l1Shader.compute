@@ -1,0 +1,42 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel ComputeL1Loss
+
+// Tekstury wejściowe
+Texture2D<float4> groundTruthImage : register(t0);
+Texture2D<float4> renderedImage : register(t1);
+
+// Bufor do przechowywania wyników L1 Loss
+RWBuffer<float> lossBuffer;
+
+// Rozmiar obrazu (podany przez C#)
+StructuredBuffer<float> sizes;
+
+[numthreads(8, 8, 1)]
+void ComputeL1Loss(uint3 id : SV_DispatchThreadID)
+{
+    int imageWidth = sizes[1];
+    int imageHeight = sizes[2];
+
+    int2 pixelCoords = id.xy;
+
+    // Sprawdzamy, czy jesteśmy w obrębie obrazu
+    if (pixelCoords.x >= imageWidth || pixelCoords.y >= imageHeight)
+        return;
+
+    // Pobieramy kolory pikseli z obu obrazów
+    float3 colorA = groundTruthImage[pixelCoords].rgb;
+    float3 colorB = renderedImage[pixelCoords].rgb;
+
+    // Obliczamy L1 Loss dla każdego kanału RGB
+    float3 diff = abs(colorA - colorB);
+
+    // Średnia różnica dla wszystkich kanałów (można użyć dot(diff, float3(0.333, 0.333, 0.333)))
+    float l1Loss = (diff.r + diff.g + diff.b) / 3.0;
+
+    // Konwersja współrzędnych 2D na indeks liniowy
+    int linearIndex = pixelCoords.y * imageWidth + pixelCoords.x;
+
+    // Zapisujemy L1 Loss do bufora
+    lossBuffer[linearIndex] = l1Loss;
+}
+
