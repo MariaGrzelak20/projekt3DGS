@@ -1,0 +1,48 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    int maxWidth=0;
+    int maxHeight=0;
+    int startingWidth=0;
+    int startingHeight=0;
+
+    int imageWidth=0;
+    int imageHeight=0;
+
+    maxWidth=startingWidth+16;
+    maxHeight=startingHeight+16;
+    int tileSize=16;
+
+    while(startingHeight < imageHeight){
+
+        int maxWidth =  min(startingWidth + tileSize, imageWidth);
+        int maxHeight = min(startingHeight + tileSize, imageHeight);
+
+        for(int i=startingWidth;i<maxWidth;i++)
+        {
+            for(int j=startingHeight;j<maxHeight;j++)
+            {
+                //cull gaussians against view frustrum of each tile
+                //keep only splats with 99% confidence interval intersecting the view frustrum
+                //gaurdband that rejects gaussians at extreme positions (mean is close to the near plane and far outside the vew frustrum)
+            }
+        }
+
+        startingWidth += tileSize;
+
+        if (startingWidth >= imageWidth)
+        {
+            startingWidth = 0; 
+            startingHeight += tileSize;
+        }
+    }
+    Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}

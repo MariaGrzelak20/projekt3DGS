@@ -61,22 +61,6 @@ public class splat : MonoBehaviour
     }
 
 
-
-    void Start()
-    {
-        points3DRead obiektDoCzytania = gameObject.AddComponent<points3DRead>();
-        List<points3DRead.splatPoint> p = obiektDoCzytania.readPoints();
-       
-
-        List<List<points3DRead.splatPoint>> groups = obiektDoCzytania.FindClosestGroups(p);
-
-       // Debug.Log("List of groups of three:"+groups.Count());
-      //  foreach (var group in groups)
-      //  {
-      //      Debug.Log($"Group: {string.Join(", ", group.Select(p => p.position.ToString()))}");
-      //  }
-    }
-
     /// poprawianie parametrow splatu przy treningu
     /// </summary>
     /// <param name="spOld"></param>

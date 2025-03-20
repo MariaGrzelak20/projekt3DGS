@@ -58,36 +58,23 @@ public class mainTrainingLoop : MonoBehaviour
 
     void Start()
     {
+        //Czytanie splatow ASCII
         List<splat.splatStruct> splatList = new List<splat.splatStruct>();
         points3DRead reader = gameObject.AddComponent<points3DRead>();
-        
-        List<splatPoint> points = reader.readPoints();
-        splat splatFunctions = gameObject.AddComponent<splat>();
+        List<splatPoint> points = reader.readPointBin();
 
-        //read camera positions and the image
+
+        //Czytanie parametrow kamer
         List<cameraExtrinsic> cameraValues = gameObject.GetComponent<cameraRead>().readCameraExtrinsics();
-
-        //scaling points by 1000, because most of them fall to 0,00... and float shows this as 0
-        float scaleFactor = 100f;
-
-        
-        for (int i = 0; i < points.Count; i++) 
-        {
-            var p = points[i]; // Copy the struct (value type)
-           // p.position *= scaleFactor; // Modify the position
-            points[i] = p; // Assign the modified struct back to the list
-        }
-
-
-        //assigning values to splats and creating  a list of them, here also decleare spherical harmonic coefficients
+        List<cameraIntrinsic> cameraIntr = gameObject.GetComponent<cameraRead>().readCameraIntrinsic();
+       
+        //Inicjalizacja splatow
         foreach (var point in points)
         {
-            
-            
             Vector3 meanPosition = point.position;
             Color meanColor = point.color;
 
-                // ZnajdŸ 3 najbli¿sze punkty
+            // ZnajdŸ 3 najbli¿sze punkty
                 var nearestPoints = points
                     .Where(p => p.position != point.position) // Pomijamy sam punkt
                     .Select(p => new { Point = p, Distance = Vector3.Distance(p.position, point.position) })
@@ -96,11 +83,12 @@ public class mainTrainingLoop : MonoBehaviour
                     .Select(p => p.Point)
                     .ToList();
 
-                // Oblicz œredni¹ odleg³oœæ do tych punktów
-                float meanDist = nearestPoints.Average(p => Vector3.Distance(p.position, point.position));
+             // Oblicz œredni¹ odleg³oœæ do tych punktów
+             float meanDist = nearestPoints.Average(p => Vector3.Distance(p.position, point.position));
 
-                // Skala splata jako œrednia odleg³oœæ do 3 punktów
-                Vector3 scale = new Vector3(meanDist, meanDist, meanDist);
+             // Skala splata jako œrednia odleg³oœæ do 3 punktów, inicjalizacja jako izotropowy splat
+              Vector3 scale = new Vector3(meanDist, meanDist, meanDist);
+            
             //Debug.Log("Skala: " + meanDist);
             /*
                 Vector3[] pointsForMatrix = { point.position };
@@ -125,15 +113,10 @@ public class mainTrainingLoop : MonoBehaviour
             */
 
 
-            //scale Vector
-            //Vector3 scaleVec = new Vector3(1f,1f,1f);
-
-            //Quaternion rotationQuat = ParseMatrixToQuaternion(R);
+            //Brak rotacji
             Quaternion rotationQuat = new Quaternion(1,0,0,0);
 
-            
-
-           //1 is for opacity, it's the starting value, that will later be improved, like all of splat's parameters
+           //Inicjalizacja splatow izotropowych na poczatek
             splatList.Add(new splat.splatStruct(
                 meanPosition,
                 scale,
@@ -146,44 +129,22 @@ public class mainTrainingLoop : MonoBehaviour
 
            
         }
+
+        showSplatData(splatList);
         
         
-        //Debug showing of values
-        Debug.Log("Liczba splatow:" + splatList.Count());
-        int iter = 0;
-
-        //wyswietlanie danych
-        foreach (splat.splatStruct spStr in splatList)
-        {
-
-           if ((iter%10)==0)//codziesiaty
-           {
-                Debug.Log("Dane splata: nr splata:"+(iter+1) +
-                    "\nPosition: " + spStr.position
-                    + "\n S: " + spStr.scale +
-                    "\n R: " + spStr.rotation +
-                    "\nColorR: " + spStr.shR[0]+" " + spStr.shR[1] +
-                    "\nColorG: " + spStr.shG[0]+" " + spStr.shG[1] +
-                    "\nColorB: " + spStr.shB[0]+" " + spStr.shB[1] 
-                     );
-           }
-            iter++;
-        }
-        
-
-
-        //loop1 - general number of complete training iterations
-        //complete iteration - iteration that went through all of camera pov, then got gradients for all of splats and upgraded them
-        //total value of loss - value indicating how different is generated image compared to gorund truth
-        float lossTotalValue = 0;
-        
+        //Petle treningowe
         for (int i = 0; i < 1; i++) 
-        {   
+        {
+            //Wartosc straty, dla wszystkich widokow
+            float lossTotalValue = 0;
 
-            for (int j = 10; j < 11;j++)//cameraValues.Count(); j++) 
+
+            //Petle zliczania wartosci bledu dla wszystkich widokow (kamer)
+            for (int j = 0; j < 1;j++)//cameraValues.Count(); j++)    //ograniczneie do jednego obrazu
             {
-                Vector3 camPos = cameraValues[j].cameraPosition;
-                string imageN = cameraValues[j].imageName    
+                Vector3 camPos = cameraValues[j].cameraPosition;    //pozycja kamery
+                string imageN = cameraValues[j].imageName           //nazwa powiazanego obrazu treningowego
                     .Replace("\r", "")
                     .Replace("\n", "")
                     .Replace("\"", "")
@@ -192,50 +153,41 @@ public class mainTrainingLoop : MonoBehaviour
                 string path =  Path.Combine(imagesPath,imageN);
                 Debug.Log(path);
                
-                //read image and load it into texture 2d
+                //Wczytanie obrazu treningowego
                 byte[] file = File.ReadAllBytes(path);
                 imageR = new Texture2D(2, 2);
                 imageR.LoadImage(file);
 
-                //prepeare compute bufer- inside data of splats, current camera position and image used for comparison
-                //m_Buffer = new ComputeBuffer(splatList.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(splat.splatStruct)));
-
-                // Set the data into the buffer
-                // m_Buffer.SetData(splatList);
+                //Splaszczenie danych do uzycia w compute shader
                 List<float> flattenedData = new List<float>();
                 foreach (var splat in splatList)
                 {
                     flattenedData.AddRange(Flatten(splat));
                 }
 
-                // Convert flattened data to an array
+                //Zmiana danych z listy na array
                 float[] flattenedArray = flattenedData.ToArray();
                 
-                
-
+                //utworzenie buffera z danymi splatow
                 m_Buffer = new ComputeBuffer(flattenedArray.Length, sizeof(float));
-
                 m_Buffer.SetData(flattenedArray);
 
-                
+                //utworzenie buffera z danymi kamer
                 float[] camPosArr = {camPos.x,camPos.y,camPos.z };
                 cameraBuffer = new ComputeBuffer (camPosArr.Length, sizeof(float));
                 cameraBuffer.SetData(camPosArr);
 
-                
-
                 // Pobranie macierzy widoku i projekcji kamery w Unity
-                Matrix4x4 viewMatrix = Camera.main.worldToCameraMatrix;   // Macierz widoku
-                Matrix4x4 projectionMatrix = Camera.main.projectionMatrix; // Macierz projekcji
+                Matrix4x4 viewMatrix = Camera.main.worldToCameraMatrix;     // Macierz widoku
+                Matrix4x4 projectionMatrix = Camera.main.projectionMatrix;  // Macierz projekcji
 
                 // Po³¹czenie obu macierzy w jedn¹ ViewProjectionMatrix
                 Matrix4x4 viewProjectionMatrix = projectionMatrix * viewMatrix;
 
-                //geting the proper size for shader - has to go over every pixel -needs proper size
-                // Get image size
-                int imageWidth = imageR.width;
+                //Pobranie rozmiarow obrazu
+                int imageWidth  = imageR.width;
                 int imageHeight = imageR.height;
-                int numSplats = splatList.Count; // Number of splats in the scene
+                int numSplats   = splatList.Count; // Number of splats in the scene
 
                 // Define number of threads per workgroup
                 int threadsPerGroupX = 8;
@@ -246,15 +198,12 @@ public class mainTrainingLoop : MonoBehaviour
                 int threadGroupsY = Mathf.CeilToInt(imageHeight / (float)threadsPerGroupY);
 
 
-                //we get necesseary sizes - number of splats, image params - width and height
-
+                //Wczytanie rozmiarow obrazu do bufora
                 float[] splatN = { splatList.Count(),imageWidth,imageHeight };
                 sizes = new ComputeBuffer(splatN.Length, sizeof(float));
                 sizes.SetData(splatN);
-                
-                
 
-                //load bufer into compute shader - for now it just generates image from splats
+                //Przypisanie buforow do compute shadera CSMain
                 int kernelHandle = computeShader.FindKernel("CSMain");
                 computeShader.SetBuffer(kernelHandle, "splatBuffer", m_Buffer);
                 computeShader.SetBuffer(kernelHandle, "cameraBuffer", cameraBuffer);
@@ -388,8 +337,8 @@ public class mainTrainingLoop : MonoBehaviour
 
                 //sum the loss?
 
-               // Mat img1 = TextureToMat(imageR);
-               // Mat img2 = TextureToMat(debugTexture);
+                // Mat img1 = TextureToMat(imageR);
+                // Mat img2 = TextureToMat(debugTexture);
 
                 // Oblicz DSSIM i L1 Loss
                 //double dssim = ComputeDSSIM(img1, img2);
@@ -398,7 +347,7 @@ public class mainTrainingLoop : MonoBehaviour
                 //Debug.Log($"DSSIM: {dssim}");
                 //Debug.Log($"L1 Loss: {l1Loss}");
 
-
+                Texture2D tex = renderSplatImage(cameraValues[i], cameraIntr[i], splatList);
             }
 
             Debug.Log("Osttateczne bledy: " + totalDssimLoss + " " + totalL1Loss);
@@ -482,6 +431,30 @@ public class mainTrainingLoop : MonoBehaviour
     }
 
 
+    public void showSplatData(List<splat.splatStruct> splatList) 
+    {
+        int iter = 0;
+        //Debug showing of values
+        Debug.Log("Liczba splatow:" + splatList.Count());
+        //wyswietlanie danych
+        foreach (splat.splatStruct spStr in splatList)
+        {
+
+            if ((iter % 10) == 0)//codziesiaty
+            {
+                Debug.Log("Dane splata: nr splata:" + (iter + 1) +
+                    "\nPosition: " + spStr.position
+                    + "\n S: " + spStr.scale +
+                    "\n R: " + spStr.rotation +
+                    "\nColorR: " + spStr.shR[0] + " " + spStr.shR[1] +
+                    "\nColorG: " + spStr.shG[0] + " " + spStr.shG[1] +
+                    "\nColorB: " + spStr.shB[0] + " " + spStr.shB[1]
+                     );
+            }
+            iter++;
+        }
+    }
+
     public float[] Flatten(splatStruct splat)
     {
         
@@ -545,12 +518,100 @@ public class mainTrainingLoop : MonoBehaviour
         return new Quaternion(x, y, z, w);
     }
 
+    //klatka przechowuje liste indeksow splatow ktore na nia nachodz¹, wraz z ich g³êbokoœciami w view frustrum
+    public struct tile 
+    {
+        public int[] splatWskaznik;
+        public int[] splatOdleglosc;
 
-    //public static double V3Distance(Vector3[] p1, Vector3[] p2)
-    //{
-        //return Math.Sqrt(
-           // Math.Pow(p1[0] - p2[0], 2) +
-           // Math.Pow(p1[1] - p2[1], 2) +
-           // Math.Pow(p1[2] - p2[2], 2));
-   // }
+        //Przechowywanie dla szybszego sortowania, na jakich pozycjach jest dana krawedz
+        public float xLeft;
+        public float yBottom;
+        
+    }
+
+    public Texture2D renderSplatImage(cameraExtrinsic camEx, cameraIntrinsic camIntr, List<splat.splatStruct> splatList) 
+    {
+        Texture2D outputImage = new Texture2D(2,2);
+
+        //sprawdzenie czy splat jest w view frustrum i klatce
+
+        //1.ustalenie kamery zgodnie z parametrami z COLMAP
+     
+        Camera.main.transform.position  =   camEx.cameraPosition;
+        Camera.main.transform.rotation  =   camEx.cameraRotation;
+
+        // Translacja kamery COLMAP
+        Vector3 translation = camEx.cameraPosition;
+        Quaternion rotation = camEx.cameraRotation;
+
+        // Odwracamy translacjê (COLMAP u¿ywa -Z jako przód)
+        Vector3 cameraPosition = -(rotation * translation);
+
+        // Obracamy kamerê o 180° wokó³ X, aby patrzy³a w stronê +Z
+        Quaternion fixRotation = Quaternion.Euler(180, 0, 0);
+        Quaternion cameraRotation = rotation * fixRotation;
+
+        // Ustawienie kamery w Unity
+        Camera.main.transform.position = cameraPosition;
+        Camera.main.transform.rotation = cameraRotation;
+
+        Camera.main.fieldOfView = ComputeFOV(camIntr.focal_length, camIntr.width);
+
+
+        Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);    //pobranie view frustrum
+
+        List<int> splatInViewFrustrum = new List<int>();
+
+        int it = 0;
+        foreach (splat.splatStruct s in splatList) 
+        {
+            if (IsSplatInFrustum(s.position)) 
+            {
+                splatInViewFrustrum.Add(it);
+            }
+            it++;
+        }
+
+        Debug.Log("Splats in view frustrum: " + splatInViewFrustrum.Count);
+
+        //lista klatek, i przypisanie im wartosci poczatkowych 
+        List<tile> tiles = new List<tile>();
+       // while (true) 
+       // {
+            for (int i = 0; i < camIntr.width; i++) 
+            {
+                for (int j = 0; j < camIntr.height; j++) 
+                {
+                    //
+                    //tiles.Add(new tile {});
+                }
+            }
+       // }
+
+        //odrzucenie splatow poza view frustrum
+
+        //przejscie po klatkach w ekranie, wyznaczenie gdzie ktory splat idzie
+        
+
+        return outputImage;
+    }
+
+    bool IsSplatInFrustum(Vector3 splatPosition)
+    {
+        Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
+
+        foreach (Plane plane in frustumPlanes)
+        {
+            if (plane.GetDistanceToPoint(splatPosition) < 0)
+            {
+                return false; // Splat jest poza frustum
+            }
+        }
+        return true; // Splat jest widoczny
+    }
+    float ComputeFOV(float focalLength, float imageWidth)
+    {
+        return 2f * Mathf.Atan(imageWidth / (2f * focalLength)) * Mathf.Rad2Deg;
+    }
 }

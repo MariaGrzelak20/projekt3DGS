@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using static splat;
 
@@ -10,8 +11,6 @@ public class points3DRead : MonoBehaviour
 {
     // Start is called before the first frame update
 
-    [SerializeField]
-    private String imageFolder = "testFolder";
     [SerializeField]
     private String plyFileName = "model.ply";
     [SerializeField]
@@ -30,6 +29,71 @@ public class points3DRead : MonoBehaviour
             color = col;
         }
 
+    }
+
+    public List<splatPoint> readPointBin() 
+    {
+        List<splatPoint> listSplat = new List<splatPoint>();
+        string filePath = Path.Combine(Application.streamingAssetsPath, plyFileName);
+
+        if (File.Exists(filePath))
+        {
+            FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+            BinaryReader reader = new BinaryReader(fs);
+            
+                // Odczytanie nag³ówka
+                string header = "";
+                while (true)
+                {
+                    string line = ReadLine(reader);
+                    header += line + "\n";
+                    if (line.StartsWith("end_header"))
+                        break;
+                }
+
+                // Znalezienie liczby wierzcho³ków
+                int vertexCount = FindVertexCount(header);
+                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 16000; }
+
+                // Odczytanie danych binarnych (x, y, z, r, g, b)
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    float x = reader.ReadSingle();
+                    float y = reader.ReadSingle();
+                    float z = reader.ReadSingle();
+                    float r = reader.ReadByte();
+                    float g = reader.ReadByte();
+                    float b = reader.ReadByte();
+
+                    Vector3 position = new Vector3(x, y, z);
+                    UnityEngine.Color color = new Color(r, g, b,1);
+                    splatPoint point = new splatPoint(position, color);
+                    listSplat.Add(point);
+
+                
+
+                    if (i == pointNumberLimit) break;
+                }
+
+            
+        }
+        else
+        {
+            Debug.LogError("Nie ma pliku PLY w StreaminAssets.");
+        }
+
+        Debug.Log("Ilosc splatow w bardzo poczatkowym czytaniu parametrow: " + listSplat.Count);
+        int it = 0;
+        foreach (splatPoint s in listSplat) {
+            if (it % 10 == 0)
+            {
+                Debug.Log("Bardzo poczatkowe czytanie parametrow: " + s.position.x + " " + s.position.y + " " + s.position.z);
+                
+            }
+            it++;
+        }
+
+        return listSplat;
     }
     /// <summary>
     /// Czyta punkty z pliku .ply i laduje je do listy splatPoint, gdzie ma pozycje i kolor
@@ -62,8 +126,15 @@ public class points3DRead : MonoBehaviour
                 if (tempArr.Length == 7)
                 {
                     points.Add(new splatPoint(
-                        new Vector3(float.Parse(tempArr[0]), float.Parse(tempArr[1]), float.Parse(tempArr[2])),
-                        new UnityEngine.Color(float.Parse(tempArr[3]), float.Parse(tempArr[4]), float.Parse(tempArr[5]), float.Parse(tempArr[6]))                      
+                        new Vector3(
+                            float.Parse(tempArr[0]), 
+                            float.Parse(tempArr[1]), 
+                            float.Parse(tempArr[2])),
+                        new UnityEngine.Color(
+                            float.Parse(tempArr[3]), 
+                            float.Parse(tempArr[4]), 
+                            float.Parse(tempArr[5]), 
+                            float.Parse(tempArr[6]))                      
                         ));
                     iterationNum++;
                 }
@@ -81,7 +152,29 @@ public class points3DRead : MonoBehaviour
         return points;
     }
 
+    private static string ReadLine(BinaryReader reader)
+    {
+        List<byte> lineBytes = new List<byte>();
+        byte b;
+        while ((b = reader.ReadByte()) != 10) // Czytanie do nowej linii (LF = 10)
+        {
+            lineBytes.Add(b);
+        }
+        return Encoding.ASCII.GetString(lineBytes.ToArray());
+    }
 
+    private static int FindVertexCount(string header)
+    {
+        foreach (string line in header.Split('\n'))
+        {
+            if (line.StartsWith("element vertex"))
+            {
+                string[] parts = line.Split(' ');
+                return int.Parse(parts[2]); // Liczba wierzcho³ków
+            }
+        }
+        throw new Exception("Nie znaleziono liczby wierzcho³ków w nag³ówku PLY.");
+    }
 
     public List<List<splatPoint>> FindClosestGroups(List<splatPoint> points)
     {

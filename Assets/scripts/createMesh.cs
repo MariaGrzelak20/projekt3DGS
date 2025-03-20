@@ -16,16 +16,14 @@ public class createMesh : MonoBehaviour
     void Start()
     {
         customMaterial.SetVector("_CameraPos", Camera.main.transform.position);
-        points3DRead reader = gameObject.GetComponent<points3DRead>();
+        points3DRead reader = gameObject.AddComponent<points3DRead>();
         mesh = new Mesh();
 
         //Loading points and their colors from file
-        List<points3DRead.splatPoint> pointList = reader.readPoints();
+        List<points3DRead.splatPoint> pointList = new List<points3DRead.splatPoint>();
+        pointList =  reader.readPointBin();
         
-
-        //mesh = reader.meshFromPly(listaPktSp);
         mesh = meshFromSplatPoint(pointList);
-        //mesh = meshFromSplatStruct();
 
         int[] indices = Enumerable.Range(0, mesh.vertices.Length).ToArray();
         mesh.SetIndices(indices, MeshTopology.Points, 0);

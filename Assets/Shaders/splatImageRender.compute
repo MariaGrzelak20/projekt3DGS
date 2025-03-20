@@ -113,7 +113,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     float shG[9];     // Współczynniki SH (sfera, kanał zielony)
     float shB[9];     // Współczynniki SH (sfera, kanał niebieski)
     float opacity;
-
+float totalWeight = 0.0;
 
     if (pixelCoords.x <= imageWidth || pixelCoords.y <= imageHeight){
     splatStruct splat;
@@ -169,20 +169,37 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
         //gaussianInfluence = saturate(gaussianInfluence * splat.opacity); // Ograniczenie wpływu
 
-
+        // SUMOWANIE SPLATÓW - KAŻDY SPLAT JEST DODAWANY WAŻONY Gaussian Influence
+        finalSplatColor += renderedCol * gaussianInfluence;
+        totalWeight += gaussianInfluence;
 
         // 3DGS stosuje "soft clamp", aby uniknąć przepaleń
         //renderedCol = renderedCol / (renderedCol + 1.0); 
 
-        finalSplatColor += renderedCol;
+        //finalSplatColor += renderedCol;
         
         //finalSplatColor = finalSplatColor * (1.0 - splat.opacity) + renderedCol * splat.opacity;
         //finalSplatColor.xyz=renderedCol+finalSplatColor;//finalSplatColor+renderedCol;
      
         }
     }
-    finalSplatColor = finalSplatColor / (1.0 + finalSplatColor);
-    
-    Result[id.xy]= float4(finalSplatColor,1);
+
+    // NORMALIZACJA - Dzielimy przez sumę wag, aby uniknąć prześwietlenia
+finalSplatColor = finalSplatColor / max(totalWeight, 1.0);
+
+// Tone Mapping (opcjonalnie dla lepszego wyglądu)
+finalSplatColor = finalSplatColor * (2.51 * finalSplatColor + 0.03) /
+                  (finalSplatColor * (2.43 * finalSplatColor + 0.59) + 0.14);
+
+Result[id.xy] = float4(finalSplatColor, 1);
+    //finalSplatColor = min(finalSplatColor, 10.0);  // Clamping
+    //finalSplatColor = finalSplatColor / (1.0 + finalSplatColor);
+
+    //finalSplatColor = finalSplatColor / (1.0 + finalSplatColor);
+    //finalSplatColor = finalSplatColor / (1.0 + finalSplatColor * finalSplatColor);
+//finalSplatColor = finalSplatColor * (2.51 * finalSplatColor + 0.03) / 
+              //    (finalSplatColor * (2.43 * finalSplatColor + 0.59) + 0.14);
+
+    //Result[id.xy]= float4(finalSplatColor,1);
 
 }
