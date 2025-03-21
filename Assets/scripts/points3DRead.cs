@@ -53,7 +53,7 @@ public class points3DRead : MonoBehaviour
 
                 // Znalezienie liczby wierzcho³ków
                 int vertexCount = FindVertexCount(header);
-                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 16000; }
+                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 2000; }
 
                 // Odczytanie danych binarnych (x, y, z, r, g, b)
                 for (int i = 0; i < vertexCount; i++)

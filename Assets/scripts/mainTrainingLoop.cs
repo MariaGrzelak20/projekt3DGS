@@ -521,13 +521,23 @@ public class mainTrainingLoop : MonoBehaviour
     //klatka przechowuje liste indeksow splatow ktore na nia nachodz¹, wraz z ich g³êbokoœciami w view frustrum
     public struct tile 
     {
-        public int[] splatWskaznik;
-        public int[] splatOdleglosc;
+        
+        public List<int> splatWskaznik;
+        public List<int> splatOdleglosc;
 
         //Przechowywanie dla szybszego sortowania, na jakich pozycjach jest dana krawedz
         public float xLeft;
         public float yBottom;
+
         
+
+        void tileAdd(int splatWsk, int splatOdl, float x, float y) 
+        {
+            this.splatWskaznik.Add(splatWsk);
+            this.splatOdleglosc.Add(splatOdl);
+            this.xLeft = x;
+            this.yBottom = y;
+        }
     }
 
     public Texture2D renderSplatImage(cameraExtrinsic camEx, cameraIntrinsic camIntr, List<splat.splatStruct> splatList) 
@@ -566,7 +576,8 @@ public class mainTrainingLoop : MonoBehaviour
         int it = 0;
         foreach (splat.splatStruct s in splatList) 
         {
-            if (IsSplatInFrustum(s.position)) 
+            float avgRadius = Mathf.Max(s.position.x, s.position.y,s.position.z)*0.5f;
+            if (IsSplatInFrustum(s.position,avgRadius)) 
             {
                 splatInViewFrustrum.Add(it);
             }
@@ -577,17 +588,77 @@ public class mainTrainingLoop : MonoBehaviour
 
         //lista klatek, i przypisanie im wartosci poczatkowych 
         List<tile> tiles = new List<tile>();
-       // while (true) 
-       // {
-            for (int i = 0; i < camIntr.width; i++) 
+
+        //sprawdzamy z iloma klatkami dany splat sie naklada
+        foreach (int iter in splatInViewFrustrum)
+        {
+            splat.splatStruct temp = splatList[iter];
+            Vector3 screenPos = Camera.main.WorldToViewportPoint(temp.position);
+
+            Matrix4x4 R = Matrix4x4.Rotate(temp.rotation);
+
+            // 2. Macierz skalowania (wariancje to kwadraty skali)
+            Matrix4x4 S = Matrix4x4.zero;
+            S.m00 = temp.scale.x ;
+            S.m11 = temp.scale.y ;
+            S.m22 = temp.scale.z ;
+
+            Matrix4x4 cov = R * S * S.transpose * R.transpose;
+
+            Matrix4x4 J = Matrix4x4.zero;
+            J.m00 = 1.0f / temp.position.z;
+            J.m02 = -temp.position.x / (temp.position.z * temp.position.z);
+            J.m11 = 1.0f / temp.position.z;
+            J.m12 = -temp.position.y / (temp.position.z * temp.position.z);
+
+            Matrix4x4 w = Camera.main.worldToCameraMatrix ;
+
+            Matrix4x4 covScreen = J * w * cov * w.transpose * J.transpose;
+            Debug.Log(
+                "Numer splata: "+iter+"\n"+
+                "Pozycja splata: "+temp.position.ToString()+"\n"+
+                "Skala splata: "+temp.scale.ToString()+"\n"+
+                "Pozycja splata na ekranie: "+screenPos.ToString()+"\n"+
+                "Matryca kowariancji: \n"+cov.ToString()+"\n"+
+                "Covariance matrix on screen\n"+covScreen.ToString());
+            
+            Matrix4x4 sigma2D = new Matrix4x4();
+            sigma2D.SetRow(0, covScreen.GetRow(0));
+            sigma2D.SetRow(1, covScreen.GetRow(1));
+
+            // Obliczamy eigenvalues (rozmiary Bounding Boxa)
+            Vector2 scale2D = ComputeEigenvalues(sigma2D);
+
+            // Przeliczenie Bounding Boxa do pikseli ekranu
+            float pixelSizeX = scale2D.x * camIntr.width;
+            float pixelSizeY = scale2D.y * camIntr.height;
+
+            Rect boundingBox = new Rect(
+                screenPos.x * camIntr.width - pixelSizeX * 0.5f,
+                screenPos.y * camIntr.height - pixelSizeY * 0.5f,
+                pixelSizeX,
+                pixelSizeY
+            );
+
+            int tileID = 0;
+
+            for (int i = 0; i < camIntr.height; i+=16) 
             {
-                for (int j = 0; j < camIntr.height; j++) 
+                for (int j = 0; j < camIntr.width; j+=16) 
                 {
-                    //
-                    //tiles.Add(new tile {});
+                
+                    Rect tile = new Rect(i, j, i+16, j+16);
+
+                    if (tile.Overlaps(boundingBox)) 
+                    {
+                        //tiles.Add(new tile(iter,));
+                    }
+
+                    tileID++;
                 }
             }
-       // }
+
+        }
 
         //odrzucenie splatow poza view frustrum
 
@@ -597,18 +668,71 @@ public class mainTrainingLoop : MonoBehaviour
         return outputImage;
     }
 
-    bool IsSplatInFrustum(Vector3 splatPosition)
+    Rect GetSplatBoundingBox2D(Vector3 position, Matrix4x4 covarianceMatrix, Camera cam, int screenWidth, int screenHeight)
+    {
+        // Transformacja pozycji splata do przestrzeni ekranu
+        Vector3 screenPos = cam.WorldToViewportPoint(position);
+
+        if (screenPos.z < 0)
+            return new Rect(0, 0, 0, 0); // Splat jest za kamer¹
+
+        // Macierz widoku i Jacobian
+        Matrix4x4 viewMatrix = cam.worldToCameraMatrix;
+        Matrix4x4 jacobian = Matrix4x4.identity; // Uproszczona wersja
+
+        // Przekszta³cenie macierzy kowariancji do przestrzeni kamery
+        Matrix4x4 sigmaPrime = jacobian * viewMatrix * covarianceMatrix * viewMatrix.transpose * jacobian.transpose;
+
+        // Usuwamy trzeci wiersz i kolumnê (z)
+        Matrix4x4 sigma2D = new Matrix4x4();
+        sigma2D.SetRow(0, sigmaPrime.GetRow(0));
+        sigma2D.SetRow(1, sigmaPrime.GetRow(1));
+
+        // Obliczamy eigenvalues (rozmiary Bounding Boxa)
+        Vector2 scale2D = ComputeEigenvalues(sigma2D);
+
+        // Przeliczenie Bounding Boxa do pikseli ekranu
+        float pixelSizeX = scale2D.x * screenWidth;
+        float pixelSizeY = scale2D.y * screenHeight;
+
+        return new Rect(
+            screenPos.x * screenWidth - pixelSizeX * 0.5f,
+            screenPos.y * screenHeight - pixelSizeY * 0.5f,
+            pixelSizeX,
+            pixelSizeY
+        );
+    }
+
+    Vector2 ComputeEigenvalues(Matrix4x4 sigma2D)
+    {
+        float a = sigma2D.m00;
+        float b = sigma2D.m01;
+        float c = sigma2D.m10;
+        float d = sigma2D.m11;
+
+        float trace = a + d;
+        float determinant = a * d - b * c;
+        float lambda1 = (trace + Mathf.Sqrt(trace * trace - 4 * determinant)) / 2;
+        float lambda2 = (trace - Mathf.Sqrt(trace * trace - 4 * determinant)) / 2;
+
+        return new Vector2(Mathf.Sqrt(lambda1), Mathf.Sqrt(lambda2));
+    }
+
+    bool IsSplatInFrustum(Vector3 splatPos,float meanRadius)
     {
         Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
 
-        foreach (Plane plane in frustumPlanes)
+        // Obliczamy promieñ bounding sphere
+
+        foreach (var plane in frustumPlanes)
         {
-            if (plane.GetDistanceToPoint(splatPosition) < 0)
+            if (plane.GetDistanceToPoint(splatPos) < -meanRadius)
             {
-                return false; // Splat jest poza frustum
+                return false; // Obiekt poza frustum
             }
         }
-        return true; // Splat jest widoczny
+
+        return true; // Widoczny!
     }
     float ComputeFOV(float focalLength, float imageWidth)
     {
