@@ -3,7 +3,7 @@ Shader "Custom/getPointsVertexShader"
   Properties
     {
         
-        _QuadSize ("Quad Size", Float) = 0.1
+        _QuadSize ("Quad Size", Float) = 0.05
     }
 
     SubShader
@@ -63,9 +63,12 @@ Shader "Custom/getPointsVertexShader"
                 //float3 up = float3(0, _QuadSize, 0);
                 float4 color    = input[0].color;
                 float3 toCamera = normalize(_CameraPos - centerWS.xyz); // Direction from quad center to the camera
+                float3 str = float3(0,0,0);
                 float3 cameraUp = float3(0, 1, 0); // Assume global up vector; change if camera roll is needed
                 float3 right = normalize(cross(cameraUp, toCamera)) * _QuadSize; // Right vector of the quad
                 float3 up = normalize(cross(toCamera, right)) * _QuadSize;    
+                
+
 
                 float4 corners[4] = {
                     centerWS + float4(-right - up, 0),

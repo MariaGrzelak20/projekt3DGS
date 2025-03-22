@@ -119,7 +119,7 @@ public class mainTrainingLoop : MonoBehaviour
            //Inicjalizacja splatow izotropowych na poczatek
             splatList.Add(new splat.splatStruct(
                 meanPosition,
-                scale,
+                scale*100,
                 rotationQuat,
                 1,
                 new float[] { meanColor.r, 0.3f, 0.3f, 0.3f, 0, 0, 0, 0, 0 },
@@ -141,7 +141,7 @@ public class mainTrainingLoop : MonoBehaviour
 
 
             //Petle zliczania wartosci bledu dla wszystkich widokow (kamer)
-            for (int j = 0; j < 1;j++)//cameraValues.Count(); j++)    //ograniczneie do jednego obrazu
+            for (int j = 3; j < 4;j++)//cameraValues.Count(); j++)    //ograniczneie do jednego obrazu
             {
                 Vector3 camPos = cameraValues[j].cameraPosition;    //pozycja kamery
                 string imageN = cameraValues[j].imageName           //nazwa powiazanego obrazu treningowego
@@ -152,12 +152,14 @@ public class mainTrainingLoop : MonoBehaviour
                     .Replace("*", "");
                 string path =  Path.Combine(imagesPath,imageN);
                 Debug.Log(path);
-               
+               Debug.Log("Pozycja i obrot kamery nr " + cameraValues[j].cameraID+" " + cameraIntr[j].cameraID +": \n" + cameraValues[j].cameraPosition.ToString() + "\n" + cameraValues[j].cameraRotation.ToString());
+
                 //Wczytanie obrazu treningowego
                 byte[] file = File.ReadAllBytes(path);
                 imageR = new Texture2D(2, 2);
                 imageR.LoadImage(file);
 
+                /*
                 //Splaszczenie danych do uzycia w compute shader
                 List<float> flattenedData = new List<float>();
                 foreach (var splat in splatList)
@@ -325,75 +327,21 @@ public class mainTrainingLoop : MonoBehaviour
                 float meanL1Loss = totalLoss2 ;
                 totalL1Loss += meanL1Loss;
 
-               // Debug.Log($" Œredni L1 Loss: {meanL1Loss}");
                
-                //zwolnienie zasobow
-                //zwolnienie zasobow
                 lossBuffer2.Release();
                 
                 sizes.Release();
 
-                //Debug.Log("Pozycja kamery"+camPos.ToString());
-
-                //sum the loss?
-
-                // Mat img1 = TextureToMat(imageR);
-                // Mat img2 = TextureToMat(debugTexture);
-
-                // Oblicz DSSIM i L1 Loss
-                //double dssim = ComputeDSSIM(img1, img2);
-                //double l1Loss = ComputeL1Loss(img1, img2);
-
-                //Debug.Log($"DSSIM: {dssim}");
-                //Debug.Log($"L1 Loss: {l1Loss}");
-
-                Texture2D tex = renderSplatImage(cameraValues[i], cameraIntr[i], splatList);
+                */
+                Texture2D tex = renderSplatImage(cameraValues[j], cameraIntr[j], splatList);
             }
 
-            Debug.Log("Osttateczne bledy: " + totalDssimLoss + " " + totalL1Loss);
-
-            //for all, ALL parameters - xyz of position, rgb of colors, R and S, we get gradient using the parameter and loss
-            //from that we get new, better value and assign it to the splat
-            //all of this has to repeat itself like tousand of times
+           
         }
 
         //change shader from compute to shader showing the result - for example the GaussianRender from that finished gaussian renderer in unity
     }
-    /*
-    Mat TextureToMat(Texture2D texture)
-    {
-        byte[] imageData = texture.EncodeToPNG();
-        Mat mat = new Mat();
-        CvInvoke.Imdecode(new Emgu.CV.Util.VectorOfByte(imageData), ImreadModes.Grayscale, mat);
-        return mat;
-    }
-
-    double ComputeDSSIM(Mat img1, Mat img2)
-    {
-        // Konwersja do 32-bitowej precyzji
-        Mat img1Float = new Mat();
-        Mat img2Float = new Mat();
-        img1.ConvertTo(img1Float, DepthType.Cv32F);
-        img2.ConvertTo(img2Float, DepthType.Cv32F);
-
-        // Obliczenie SSIM przez mno¿enie pikseli
-        Mat product = new Mat();
-        CvInvoke.Multiply(img1Float, img2Float, product);
-
-        MCvScalar meanSSIM = CvInvoke.Mean(product);
-        double ssim = meanSSIM.V0;  // Pobranie wartoœci
-
-        return (1.0 - ssim) / 2.0;  // DSSIM = (1 - SSIM) / 2
-    }
-   
-    double ComputeL1Loss(Mat img1, Mat img2)
-    {
-        Mat absDiff = new Mat();
-        CvInvoke.AbsDiff(img1, img2, absDiff);
-        MCvScalar l1Loss = CvInvoke.Mean(absDiff);
-        return l1Loss.V0;
-    }
- */
+    
     void CheckTextureContents(RenderTexture renderTexture, Texture2D groundTruthImage)
     {
         RenderTexture.active = renderTexture;
@@ -437,10 +385,11 @@ public class mainTrainingLoop : MonoBehaviour
         //Debug showing of values
         Debug.Log("Liczba splatow:" + splatList.Count());
         //wyswietlanie danych
+
         foreach (splat.splatStruct spStr in splatList)
         {
 
-            if ((iter % 10) == 0)//codziesiaty
+            if (iter < 10)
             {
                 Debug.Log("Dane splata: nr splata:" + (iter + 1) +
                     "\nPosition: " + spStr.position
@@ -450,8 +399,10 @@ public class mainTrainingLoop : MonoBehaviour
                     "\nColorG: " + spStr.shG[0] + " " + spStr.shG[1] +
                     "\nColorB: " + spStr.shB[0] + " " + spStr.shB[1]
                      );
-            }
             iter++;
+            }
+            else { break; }
+            
         }
     }
 
@@ -523,15 +474,23 @@ public class mainTrainingLoop : MonoBehaviour
     {
         
         public List<int> splatWskaznik;
-        public List<int> splatOdleglosc;
+        public List<float> splatOdleglosc;
 
         //Przechowywanie dla szybszego sortowania, na jakich pozycjach jest dana krawedz
+        public int idTile;
         public float xLeft;
         public float yBottom;
 
-        
+        public tile(List<int>wsk, List<float> odl,int id,int x,int y) 
+        {
+            splatWskaznik = wsk;
+            splatOdleglosc = odl;
+            idTile = id;
+            xLeft = x;
+            yBottom = y;
+        }
 
-        void tileAdd(int splatWsk, int splatOdl, float x, float y) 
+        public void tileAdd(int splatWsk, float splatOdl, float x, float y) 
         {
             this.splatWskaznik.Add(splatWsk);
             this.splatOdleglosc.Add(splatOdl);
@@ -547,10 +506,15 @@ public class mainTrainingLoop : MonoBehaviour
         //sprawdzenie czy splat jest w view frustrum i klatce
 
         //1.ustalenie kamery zgodnie z parametrami z COLMAP
-     
-        Camera.main.transform.position  =   camEx.cameraPosition;
-        Camera.main.transform.rotation  =   camEx.cameraRotation;
 
+        //Quaternion r = this.gameObject.transform.rotation;
+        //Quaternion rotat = new Quaternion(r.x, r.y , r.z + 180, r.w);
+        //this.gameObject.transform.rotation = rotat;
+
+        Camera.main.transform.position  =   camEx.cameraPosition;
+        Quaternion rot = new Quaternion(camEx.cameraRotation.x, camEx.cameraRotation.y, camEx.cameraRotation.z,camEx.cameraRotation.w);
+        Camera.main.transform.rotation  =   camEx.cameraRotation;
+        /*
         // Translacja kamery COLMAP
         Vector3 translation = camEx.cameraPosition;
         Quaternion rotation = camEx.cameraRotation;
@@ -565,13 +529,14 @@ public class mainTrainingLoop : MonoBehaviour
         // Ustawienie kamery w Unity
         Camera.main.transform.position = cameraPosition;
         Camera.main.transform.rotation = cameraRotation;
-
-        Camera.main.fieldOfView = ComputeFOV(camIntr.focal_length, camIntr.width);
-
+        */
+        //Camera.main.fieldOfView = ComputeFOV(camIntr.focal_length, camIntr.width);
+        //Camera.main.fieldOfView = 60f;
 
         Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);    //pobranie view frustrum
 
         List<int> splatInViewFrustrum = new List<int>();
+        List<splat.splatStruct> splatyDoPokazania = new List<splat.splatStruct>();
 
         int it = 0;
         foreach (splat.splatStruct s in splatList) 
@@ -580,14 +545,21 @@ public class mainTrainingLoop : MonoBehaviour
             if (IsSplatInFrustum(s.position,avgRadius)) 
             {
                 splatInViewFrustrum.Add(it);
+
+                splatyDoPokazania.Add(s);
             }
             it++;
         }
+
+        showGizmosForSplats(splatyDoPokazania);
+        showSplatMesh(splatList);
 
         Debug.Log("Splats in view frustrum: " + splatInViewFrustrum.Count);
 
         //lista klatek, i przypisanie im wartosci poczatkowych 
         List<tile> tiles = new List<tile>();
+
+        
 
         //sprawdzamy z iloma klatkami dany splat sie naklada
         foreach (int iter in splatInViewFrustrum)
@@ -614,20 +586,25 @@ public class mainTrainingLoop : MonoBehaviour
             Matrix4x4 w = Camera.main.worldToCameraMatrix ;
 
             Matrix4x4 covScreen = J * w * cov * w.transpose * J.transpose;
-            Debug.Log(
+            /*Debug.Log(
                 "Numer splata: "+iter+"\n"+
                 "Pozycja splata: "+temp.position.ToString()+"\n"+
                 "Skala splata: "+temp.scale.ToString()+"\n"+
                 "Pozycja splata na ekranie: "+screenPos.ToString()+"\n"+
                 "Matryca kowariancji: \n"+cov.ToString()+"\n"+
                 "Covariance matrix on screen\n"+covScreen.ToString());
-            
+            */
             Matrix4x4 sigma2D = new Matrix4x4();
             sigma2D.SetRow(0, covScreen.GetRow(0));
             sigma2D.SetRow(1, covScreen.GetRow(1));
 
             // Obliczamy eigenvalues (rozmiary Bounding Boxa)
             Vector2 scale2D = ComputeEigenvalues(sigma2D);
+
+            Debug.Log("PArametry dla splatow w view frustrum:\n" +
+                "Pozycja na ekranie: " + screenPos.ToString() + "\n" +
+                "Eigenvalues: " + scale2D.x + " " + scale2D.y+"\n"+
+                "Pozycja w 3d:"+temp.position.ToString());
 
             // Przeliczenie Bounding Boxa do pikseli ekranu
             float pixelSizeX = scale2D.x * camIntr.width;
@@ -641,18 +618,51 @@ public class mainTrainingLoop : MonoBehaviour
             );
 
             int tileID = 0;
+            int tileSizeX = 16;
+            int tileSizeY = 16;
+            int borderTileSizeX = camIntr.width%16;
+            int borderTileSizeY = camIntr.height%16;
 
-            for (int i = 0; i < camIntr.height; i+=16) 
+            for (int i = 0; i < camIntr.width; i+=16) 
             {
-                for (int j = 0; j < camIntr.width; j+=16) 
+                for (int j = 0; j < camIntr.height; j+=16) 
                 {
-                
-                    Rect tile = new Rect(i, j, i+16, j+16);
+                    int tileSpaceX = tileSizeX;
+                    int tileSpaceY = tileSizeY;
+                    if (i + tileSizeX > camIntr.width) { tileSpaceX = borderTileSizeX; }
+                    if (j + tileSizeY > camIntr.height) { tileSpaceY = borderTileSizeY; }
+
+                    Rect tile = new Rect(i, j, tileSpaceX, tileSpaceY);
 
                     if (tile.Overlaps(boundingBox)) 
                     {
-                        //tiles.Add(new tile(iter,));
+                        bool tileExists = false;
+
+                        //sprawdzamy czy juz mamy tile o podanym id, jak nie ma, to dodajemy
+                        foreach (tile t in tiles) 
+                        {
+                            if (t.idTile == tileID) 
+                            {
+                                Vector3 splatWorldPos = temp.position; // pozycja Gaussianu w World Space
+                                Matrix4x4 viewMatrix = Camera.main.worldToCameraMatrix;
+
+                                // Przekszta³camy pozycjê do przestrzeni kamery (View Space)
+                                Vector3 splatViewPos = viewMatrix.MultiplyPoint3x4(splatWorldPos);
+
+                                // G³êbokoœæ to wartoœæ Z w View Space (czyli odleg³oœæ od kamery)
+                                float depth = splatViewPos.z;
+                                t.tileAdd(iter, depth, i, j);
+                                tileExists = true;
+                            }
+                        }
+
+                        if (!tileExists) 
+                        {
+                           
+                        }
                     }
+                    
+
 
                     tileID++;
                 }
@@ -666,6 +676,61 @@ public class mainTrainingLoop : MonoBehaviour
         
 
         return outputImage;
+    }
+
+    public Material customMaterial;
+
+    public void showSplatMesh(List<splat.splatStruct> lista) 
+    {
+        Mesh mesh;
+        
+        customMaterial.SetVector("_CameraPos", Camera.main.transform.position);
+        points3DRead reader = gameObject.AddComponent<points3DRead>();
+        createMesh meshCreator = gameObject.AddComponent<createMesh>();
+        mesh = new Mesh();
+
+        //Loading points and their colors from file
+        //List<points3DRead.splatPoint> pointList = new List<points3DRead.splatPoint>();
+        //pointList = reader.readPointBin();
+
+        mesh = reader.meshFromSplats(lista);
+
+        int[] indices = Enumerable.Range(0, mesh.vertices.Length).ToArray();
+        mesh.SetIndices(indices, MeshTopology.Points, 0);
+
+        // Recalculate bounds
+        mesh.RecalculateBounds();
+        //Debug.Log($"Mesh bounds: {mesh.bounds}");
+
+
+        // Assign mesh to the MeshFilter
+        MeshFilter meshFilter = GetComponent<MeshFilter>();
+        meshFilter.mesh = mesh;
+
+
+        // Assign material to the MeshRenderer
+        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
+        meshRenderer.material = customMaterial;
+
+        /* foreach (Vector3 a in GetComponent<MeshFilter>().mesh.vertices)
+         {
+             Debug.Log(a);
+         }
+        */
+
+        
+    }
+
+    public void showGizmosForSplats(List<splat.splatStruct> lista)
+    {
+        List<Vector3> points;
+        points = new List<Vector3>();
+
+        //Loading only the cooridnates of points
+        foreach (splat.splatStruct spt in lista)
+        {
+            points.Add(spt.position);
+        }
     }
 
     Rect GetSplatBoundingBox2D(Vector3 position, Matrix4x4 covarianceMatrix, Camera cam, int screenWidth, int screenHeight)

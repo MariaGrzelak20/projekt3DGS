@@ -86,7 +86,7 @@ public class cameraRead : MonoBehaviour
                 tempIter = temp.Split(' ');
 
 
-                if (!header && i == nextId && tempIter.Length > 5)//sprawdzamy czy nie jestesmy w headerze i czy na odpowiedniej linijce - tylko co druga linijka zawiera parametry
+                if (!header && i == nextId && tempIter.Length ==10)//sprawdzamy czy nie jestesmy w headerze i czy na odpowiedniej linijce - tylko co druga linijka zawiera parametry
                 {
 
 
@@ -95,22 +95,31 @@ public class cameraRead : MonoBehaviour
                     int.TryParse(tempIter[0], out h);
                     int j = 0;
                     int.TryParse(tempIter[8], out j);
+                    Vector3 position = new Vector3(
+                            float.Parse(tempIter[5]),
+                            float.Parse(tempIter[6]),
+                            float.Parse(tempIter[7])
+                            );
+                    Quaternion rotation = new Quaternion(
+                            float.Parse(tempIter[2]),
+                            float.Parse(tempIter[3]),
+                            float.Parse(tempIter[4]),
+                            float.Parse(tempIter[1])
+                            );
+                    rotation = rotation * Quaternion.Euler(0, 180, 0);
+                    Vector3 cameraPos = -(rotation*position);
+                    float x = cameraPos.x;
+                    float y = cameraPos.y;
+                    float z = cameraPos.z;
+                    cameraPos = new Vector3(x,y,z);
+
                     tempIter[9] = tempIter[9].Replace(",", ".");
                     cameraExtrinsic cam = new cameraExtrinsic(
                         h,
                         j,
                         tempIter[9],
-                        new Vector3(
-                            float.Parse(tempIter[5]),
-                            float.Parse(tempIter[6]),
-                            float.Parse(tempIter[7])
-                            ),
-                        new Quaternion(
-                            float.Parse(tempIter[2]),
-                            float.Parse(tempIter[3]),
-                            float.Parse(tempIter[4]),
-                            float.Parse(tempIter[1])
-                            )
+                        cameraPos,
+                        rotation
                         );
                     listCameraE.Add(cam);
                 }

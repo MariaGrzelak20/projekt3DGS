@@ -15,6 +15,7 @@ public class createMesh : MonoBehaviour
 
     void Start()
     {
+        /*
         customMaterial.SetVector("_CameraPos", Camera.main.transform.position);
         points3DRead reader = gameObject.AddComponent<points3DRead>();
         mesh = new Mesh();
@@ -42,12 +43,7 @@ public class createMesh : MonoBehaviour
         MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
         meshRenderer.material = customMaterial;
 
-       /* foreach (Vector3 a in GetComponent<MeshFilter>().mesh.vertices)
-        {
-            Debug.Log(a);
-        }
-       */
-
+       
         points = new List<Vector3>();
 
         //Loading only the cooridnates of points
@@ -55,8 +51,8 @@ public class createMesh : MonoBehaviour
         { 
             points.Add(spt.position);
         }
-
-
+       */
+       
     }
 
     //Draw raw 3d points

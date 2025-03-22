@@ -53,7 +53,7 @@ public class points3DRead : MonoBehaviour
 
                 // Znalezienie liczby wierzcho³ków
                 int vertexCount = FindVertexCount(header);
-                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 2000; }
+                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 12000; }
 
                 // Odczytanie danych binarnych (x, y, z, r, g, b)
                 for (int i = 0; i < vertexCount; i++)
@@ -65,7 +65,7 @@ public class points3DRead : MonoBehaviour
                     float g = reader.ReadByte();
                     float b = reader.ReadByte();
 
-                    Vector3 position = new Vector3(x, y, z);
+                    Vector3 position = new Vector3(x, -y, z);
                     UnityEngine.Color color = new Color(r, g, b,1);
                     splatPoint point = new splatPoint(position, color);
                     listSplat.Add(point);
@@ -81,7 +81,7 @@ public class points3DRead : MonoBehaviour
         {
             Debug.LogError("Nie ma pliku PLY w StreaminAssets.");
         }
-
+        /*
         Debug.Log("Ilosc splatow w bardzo poczatkowym czytaniu parametrow: " + listSplat.Count);
         int it = 0;
         foreach (splatPoint s in listSplat) {
@@ -91,7 +91,7 @@ public class points3DRead : MonoBehaviour
                 
             }
             it++;
-        }
+        }*/
 
         return listSplat;
     }
@@ -113,7 +113,7 @@ public class points3DRead : MonoBehaviour
             string temp = "";
             string[] tempArr = new string[7];
 
-            if (pointNumberLimit == 0||pointNumberLimit>splitContent.Count()) { pointNumberLimit = 5000; }
+            if (pointNumberLimit == 0||pointNumberLimit>splitContent.Count()) { pointNumberLimit = 30000; }
             Debug.Log(pointNumberLimit);
             int iterationNum = 0;
             foreach (string con in splitContent)
@@ -237,5 +237,26 @@ public class points3DRead : MonoBehaviour
         return mesh;
     }
 
-    
+    public Mesh meshFromSplats(List<splat.splatStruct> listaSplat) 
+    {
+        Mesh mesh = new Mesh();
+        List<Vector3> meanPosition = new List<Vector3>();
+        List<Color> meanColor = new List<Color>();
+
+        foreach (splat.splatStruct splat in listaSplat)
+        {
+            Vector3 meanPos = splat.position;
+            meanPosition.Add(meanPos);
+
+
+            Color meanCol = new Color(splat.shR[0], splat.shG[0], splat.shB[0])/100;
+            meanColor.Add(meanCol); 
+
+        }
+
+        mesh.vertices = meanPosition.ToArray();
+        mesh.colors = meanColor.ToArray();
+
+        return mesh;
+    }
 }
