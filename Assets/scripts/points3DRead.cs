@@ -53,7 +53,7 @@ public class points3DRead : MonoBehaviour
 
                 // Znalezienie liczby wierzcho³ków
                 int vertexCount = FindVertexCount(header);
-                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit = 12000; }
+                if (pointNumberLimit == 0 || pointNumberLimit > vertexCount) { pointNumberLimit =18000; }
 
                 // Odczytanie danych binarnych (x, y, z, r, g, b)
                 for (int i = 0; i < vertexCount; i++)
@@ -65,7 +65,8 @@ public class points3DRead : MonoBehaviour
                     float g = reader.ReadByte();
                     float b = reader.ReadByte();
 
-                    Vector3 position = new Vector3(x, -y, z);
+                    //Vector3 position = new Vector3(x, -y, -z);
+                    Vector3 position = new Vector3(x, y, z);
                     UnityEngine.Color color = new Color(r, g, b,1);
                     splatPoint point = new splatPoint(position, color);
                     listSplat.Add(point);

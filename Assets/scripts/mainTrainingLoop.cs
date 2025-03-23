@@ -15,6 +15,7 @@ using UnityEngine.Rendering;
 using UnityEngine.UIElements;
 using UnityEngine.UI;
 using UnityEngine;
+using UnityEditor.SceneManagement;
 //using Emgu.CV;
 //using Emgu.CV.CvEnum;
 //using Emgu.CV.Structure;
@@ -65,7 +66,7 @@ public class mainTrainingLoop : MonoBehaviour
 
 
         //Czytanie parametrow kamer
-        List<cameraExtrinsic> cameraValues = gameObject.GetComponent<cameraRead>().readCameraExtrinsics();
+        List<cameraExtrinsic> cameraValues = gameObject.GetComponent<cameraRead>().readCameras2();
         List<cameraIntrinsic> cameraIntr = gameObject.GetComponent<cameraRead>().readCameraIntrinsic();
        
         //Inicjalizacja splatow
@@ -141,8 +142,9 @@ public class mainTrainingLoop : MonoBehaviour
 
 
             //Petle zliczania wartosci bledu dla wszystkich widokow (kamer)
-            for (int j = 3; j < 4;j++)//cameraValues.Count(); j++)    //ograniczneie do jednego obrazu
+            for (int j = 0; j < 1;j++)//cameraValues.Count(); j++)    //ograniczneie do jednego obrazu
             {
+                j = 1;
                 Vector3 camPos = cameraValues[j].cameraPosition;    //pozycja kamery
                 string imageN = cameraValues[j].imageName           //nazwa powiazanego obrazu treningowego
                     .Replace("\r", "")
@@ -386,6 +388,7 @@ public class mainTrainingLoop : MonoBehaviour
         Debug.Log("Liczba splatow:" + splatList.Count());
         //wyswietlanie danych
 
+        /*
         foreach (splat.splatStruct spStr in splatList)
         {
 
@@ -403,7 +406,7 @@ public class mainTrainingLoop : MonoBehaviour
             }
             else { break; }
             
-        }
+        }*/
     }
 
     public float[] Flatten(splatStruct splat)
@@ -499,39 +502,34 @@ public class mainTrainingLoop : MonoBehaviour
         }
     }
 
+    [SerializeField] public Camera cam;
+
     public Texture2D renderSplatImage(cameraExtrinsic camEx, cameraIntrinsic camIntr, List<splat.splatStruct> splatList) 
     {
         Texture2D outputImage = new Texture2D(2,2);
 
-        //sprawdzenie czy splat jest w view frustrum i klatce
+        Vector3 camPosColmap  =   camEx.cameraPosition;
+        Quaternion camRotColmap  =   camEx.cameraRotation;
 
-        //1.ustalenie kamery zgodnie z parametrami z COLMAP
+        Debug.Log("Dane do funkcji " + camPosColmap.ToString() + " " + camRotColmap);
 
-        //Quaternion r = this.gameObject.transform.rotation;
-        //Quaternion rotat = new Quaternion(r.x, r.y , r.z + 180, r.w);
-        //this.gameObject.transform.rotation = rotat;
+        camPosColmap = gameObject.GetComponent<cameraRead>().cameraPositionForUnity(camPosColmap,camRotColmap);
+        camRotColmap = Quaternion.Inverse(camRotColmap);
 
-        Camera.main.transform.position  =   camEx.cameraPosition;
-        Quaternion rot = new Quaternion(camEx.cameraRotation.x, camEx.cameraRotation.y, camEx.cameraRotation.z,camEx.cameraRotation.w);
-        Camera.main.transform.rotation  =   camEx.cameraRotation;
+        
+
+        //camRotColmap.x *= -1 ;
+        Debug.Log("Przypisywana rotacja:" + camRotColmap+"\n"+"Przypisana pozycja: "+camPosColmap);
+        
+        cam.transform.rotation = camRotColmap;
+        cam.transform.position = camPosColmap;
+
         /*
-        // Translacja kamery COLMAP
-        Vector3 translation = camEx.cameraPosition;
-        Quaternion rotation = camEx.cameraRotation;
-
-        // Odwracamy translacjê (COLMAP u¿ywa -Z jako przód)
-        Vector3 cameraPosition = -(rotation * translation);
-
-        // Obracamy kamerê o 180° wokó³ X, aby patrzy³a w stronê +Z
-        Quaternion fixRotation = Quaternion.Euler(180, 0, 0);
-        Quaternion cameraRotation = rotation * fixRotation;
-
-        // Ustawienie kamery w Unity
-        Camera.main.transform.position = cameraPosition;
-        Camera.main.transform.rotation = cameraRotation;
+        Camera.main.transform.rotation.Set(camEx.cameraRotation.x,camEx.cameraRotation.y,camEx.cameraRotation.z,camEx.cameraRotation.w);
+        cam.transform.rotation.Set(camEx.cameraRotation.x,camEx.cameraRotation.y,camEx.cameraRotation.z,camEx.cameraRotation.w);
+        Debug.Log("Ustawiona rotacja kamery : "+Camera.main.transform.rotation.ToString());
+        Debug.Log("Ustawiona rotacja kamery : "+cam.transform.rotation.ToString());
         */
-        //Camera.main.fieldOfView = ComputeFOV(camIntr.focal_length, camIntr.width);
-        //Camera.main.fieldOfView = 60f;
 
         Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);    //pobranie view frustrum
 
@@ -601,10 +599,12 @@ public class mainTrainingLoop : MonoBehaviour
             // Obliczamy eigenvalues (rozmiary Bounding Boxa)
             Vector2 scale2D = ComputeEigenvalues(sigma2D);
 
+            /*
             Debug.Log("PArametry dla splatow w view frustrum:\n" +
                 "Pozycja na ekranie: " + screenPos.ToString() + "\n" +
                 "Eigenvalues: " + scale2D.x + " " + scale2D.y+"\n"+
                 "Pozycja w 3d:"+temp.position.ToString());
+            */
 
             // Przeliczenie Bounding Boxa do pikseli ekranu
             float pixelSizeX = scale2D.x * camIntr.width;

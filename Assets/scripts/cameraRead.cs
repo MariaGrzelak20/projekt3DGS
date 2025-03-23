@@ -25,7 +25,7 @@ public class cameraRead : MonoBehaviour
         public int imageCenterX;
         public int imageCenterY;
 
-        public cameraIntrinsic(int cam, string mod, int wid, int heig,float fov, int imX, int imY) 
+        public cameraIntrinsic(int cam, string mod, int wid, int heig, float fov, int imX, int imY)
         {
             cameraID = cam;
             model = mod;
@@ -86,10 +86,11 @@ public class cameraRead : MonoBehaviour
                 tempIter = temp.Split(' ');
 
 
-                if (!header && i == nextId && tempIter.Length ==10)//sprawdzamy czy nie jestesmy w headerze i czy na odpowiedniej linijce - tylko co druga linijka zawiera parametry
+                if (!header && i == nextId && tempIter.Length == 10)//sprawdzamy czy nie jestesmy w headerze i czy na odpowiedniej linijce - tylko co druga linijka zawiera parametry
                 {
 
-
+                    //Debug.Log(temp.ToString());
+                    //Debug.Log(tempIter[0]+" "+ tempIter[1] + " " + tempIter[2] + " " + tempIter[3] + " " + tempIter[4] + " " + tempIter[5] + " " + tempIter[6] + " " + tempIter[7] + " " + tempIter[8] + " " + tempIter[9]);
                     nextId += 2;
                     int h = 0;
                     int.TryParse(tempIter[0], out h);
@@ -106,13 +107,21 @@ public class cameraRead : MonoBehaviour
                             float.Parse(tempIter[4]),
                             float.Parse(tempIter[1])
                             );
-                    rotation = rotation * Quaternion.Euler(0, 180, 0);
-                    Vector3 cameraPos = -(rotation*position);
-                    float x = cameraPos.x;
-                    float y = cameraPos.y;
-                    float z = cameraPos.z;
-                    cameraPos = new Vector3(x,y,z);
+                    rotation.Set(
+                            float.Parse(tempIter[4]),
+                            float.Parse(tempIter[1]),
+                            float.Parse(tempIter[2]),
+                            float.Parse(tempIter[3])
+                            );
+                    rotation.Normalize(); // bardzo wa¿ne!
 
+                    // 1. Inwersja rotacji COLMAP  z camera-to-world
+                    Quaternion unityRot = Quaternion.Inverse(rotation);
+
+                    rotation = rotation * Quaternion.Euler(0, 180, 0);
+                    Vector3 cameraPos = -(rotation * position);
+                    
+                    //Debug.Log("Rotacja: " + rotation.x+" "+rotation.y+" "+rotation.z);
                     tempIter[9] = tempIter[9].Replace(",", ".");
                     cameraExtrinsic cam = new cameraExtrinsic(
                         h,
@@ -137,12 +146,91 @@ public class cameraRead : MonoBehaviour
 
         }
 
-       
+
 
         return listCameraE;
     }
 
+    public Vector3 cameraPositionForUnity(Vector3 cPosition,Quaternion cRotation) 
+    {
 
+        Quaternion rot = cRotation;
+        //rot.y *= -1;
+        //rot.z *= -1;
+        //C=-R(transponowane)*t
+        Vector3 pos = cPosition;
+        //pos.y*= -1;
+        //pos.z *= -1;
+        //Quaternion rot = Quaternion.Inverse(cRotation); // transformacja COLMAP  Unity
+        Debug.Log("Dane w funkcji: " + cPosition + " " + cRotation);
+        Debug.Log("Dane w funkcji: " + pos + " " + rot);
+        // Oblicz pozycjê obiektu (w Unity: position = -R * C)
+        Matrix4x4 R = Matrix4x4.Rotate(rot);
+        Debug.Log("Matryca:\n "+R.ToString());
+
+        Vector3 position = -(R.transpose.MultiplyVector(pos)); ;
+
+        // Stwórz GameObject jako kamerê
+
+        return position;
+    }
+
+    
+
+    public List<cameraExtrinsic> readCameras2()
+    {
+        string filePath = Path.Combine(Application.streamingAssetsPath, cameraFilename);
+
+        List<cameraExtrinsic> listCameraE = new List<cameraExtrinsic>();
+
+        if (File.Exists(filePath))
+        {
+            
+            string[] lines = File.ReadAllLines(filePath);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.StartsWith("#") || line == "") continue;
+
+                string[] parts = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 10) continue;
+
+                int imageID = int.Parse(parts[0]);
+                int cameraID = int.Parse(parts[0]);
+                float qw = float.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture);
+                float qx = float.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
+                float qy = float.Parse(parts[3], System.Globalization.CultureInfo.InvariantCulture);
+                float qz = float.Parse(parts[4], System.Globalization.CultureInfo.InvariantCulture);
+
+                float tx = float.Parse(parts[5], System.Globalization.CultureInfo.InvariantCulture);
+                float ty = float.Parse(parts[6], System.Globalization.CultureInfo.InvariantCulture);
+                float tz = float.Parse(parts[7], System.Globalization.CultureInfo.InvariantCulture);
+
+                string imageName = parts[9];
+
+                cameraExtrinsic cam = new cameraExtrinsic
+                {
+                    imageID = imageID,
+                    cameraID = cameraID,
+                    imageName = imageName,
+                    cameraPosition = new Vector3(tx, ty, tz),
+                    cameraRotation = new Quaternion(qx, qy, qz, qw),
+                    
+                };
+
+                listCameraE.Add(cam);
+
+                //Debug.Log(cam.cameraPosition.ToString()+" "+cam.cameraRotation.ToString()+" "+cam.imageName);
+
+                i++; // skip 2nd line (keypoints)
+            }
+
+        }
+   
+
+
+        return listCameraE;
+    }
     public List<cameraIntrinsic> readCameraIntrinsic() 
     {
         List<cameraIntrinsic> cameraIntrinsics = new List<cameraIntrinsic>();
