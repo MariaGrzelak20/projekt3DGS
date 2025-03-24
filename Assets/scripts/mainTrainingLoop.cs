@@ -16,6 +16,7 @@ using UnityEngine.UIElements;
 using UnityEngine.UI;
 using UnityEngine;
 using UnityEditor.SceneManagement;
+using Unity.Mathematics;
 //using Emgu.CV;
 //using Emgu.CV.CvEnum;
 //using Emgu.CV.Structure;
@@ -502,6 +503,20 @@ public class mainTrainingLoop : MonoBehaviour
         }
     }
 
+    //klucz taki jak w 3dgs, do sortowania w RADIX, zlepione 20bitów tileIDD i 12 bitów g³êbokoœci
+    struct kluczSort
+    {
+        public uint key;
+        public int splatID;
+
+        public void addKey(int splat,float tileID, float depth) 
+        {
+            int maxDepth = 10;
+            int quantizedDepth = Mathf.Clamp((int)(depth / maxDepth * 4095f), 0, 4095);
+            key = ((uint)tileID << 12) | ((uint)quantizedDepth & 0xFFF);
+        }
+    }
+
     [SerializeField] public Camera cam;
 
     public Texture2D renderSplatImage(cameraExtrinsic camEx, cameraIntrinsic camIntr, List<splat.splatStruct> splatList) 
@@ -516,20 +531,13 @@ public class mainTrainingLoop : MonoBehaviour
         camPosColmap = gameObject.GetComponent<cameraRead>().cameraPositionForUnity(camPosColmap,camRotColmap);
         camRotColmap = Quaternion.Inverse(camRotColmap);
 
+        float fov= 2f * Mathf.Atan(0.5f * camIntr.height / camIntr.width) * Mathf.Rad2Deg;
+        cam.fieldOfView = fov;
         
-
-        //camRotColmap.x *= -1 ;
-        Debug.Log("Przypisywana rotacja:" + camRotColmap+"\n"+"Przypisana pozycja: "+camPosColmap);
+        Debug.Log("Przypisywana rotacja:" + camRotColmap+"\n"+"Przypisana pozycja: "+camPosColmap + "\n" + "Fov: " + fov);
         
         cam.transform.rotation = camRotColmap;
         cam.transform.position = camPosColmap;
-
-        /*
-        Camera.main.transform.rotation.Set(camEx.cameraRotation.x,camEx.cameraRotation.y,camEx.cameraRotation.z,camEx.cameraRotation.w);
-        cam.transform.rotation.Set(camEx.cameraRotation.x,camEx.cameraRotation.y,camEx.cameraRotation.z,camEx.cameraRotation.w);
-        Debug.Log("Ustawiona rotacja kamery : "+Camera.main.transform.rotation.ToString());
-        Debug.Log("Ustawiona rotacja kamery : "+cam.transform.rotation.ToString());
-        */
 
         Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(Camera.main);    //pobranie view frustrum
 
@@ -540,30 +548,42 @@ public class mainTrainingLoop : MonoBehaviour
         foreach (splat.splatStruct s in splatList) 
         {
             float avgRadius = Mathf.Max(s.position.x, s.position.y,s.position.z)*0.5f;
-            if (IsSplatInFrustum(s.position,avgRadius)) 
+            if (IsSplatInFrustum(s.position, avgRadius))
             {
-                splatInViewFrustrum.Add(it);
+                float boundingBoxVal = 0.3f;
+                float odlegloscX = math.abs(cam.transform.position.x - s.position.x);
+                float odlegloscY = math.abs(cam.transform.position.y - s.position.y);
+                float odlegloscZ = math.abs(cam.transform.position.z - s.position.z);
 
-                splatyDoPokazania.Add(s);
+                if (odlegloscX > boundingBoxVal && odlegloscY > boundingBoxVal && odlegloscZ > boundingBoxVal){
+                    Vector3 viewPos = Camera.main.WorldToViewportPoint(s.position);
+
+                    if (viewPos.z > 0f&&viewPos.x>=0&&viewPos.y>=0&&viewPos.x<camIntr.width&&viewPos.y<camIntr.height)
+                    {
+                        splatInViewFrustrum.Add(it);
+                        splatyDoPokazania.Add(s);
+                    }
+                    
+                } 
             }
             it++;
         }
 
-        showGizmosForSplats(splatyDoPokazania);
-        showSplatMesh(splatList);
+        
+        showSplatMesh(splatyDoPokazania);
 
         Debug.Log("Splats in view frustrum: " + splatInViewFrustrum.Count);
 
         //lista klatek, i przypisanie im wartosci poczatkowych 
         List<tile> tiles = new List<tile>();
 
-        
+        int splatInVFNumber = 0;
 
         //sprawdzamy z iloma klatkami dany splat sie naklada
         foreach (int iter in splatInViewFrustrum)
         {
             splat.splatStruct temp = splatList[iter];
-            Vector3 screenPos = Camera.main.WorldToViewportPoint(temp.position);
+            Vector3 screenPos = cam.WorldToScreenPoint(temp.position);
 
             Matrix4x4 R = Matrix4x4.Rotate(temp.rotation);
 
@@ -584,27 +604,28 @@ public class mainTrainingLoop : MonoBehaviour
             Matrix4x4 w = Camera.main.worldToCameraMatrix ;
 
             Matrix4x4 covScreen = J * w * cov * w.transpose * J.transpose;
-            /*Debug.Log(
-                "Numer splata: "+iter+"\n"+
-                "Pozycja splata: "+temp.position.ToString()+"\n"+
-                "Skala splata: "+temp.scale.ToString()+"\n"+
-                "Pozycja splata na ekranie: "+screenPos.ToString()+"\n"+
-                "Matryca kowariancji: \n"+cov.ToString()+"\n"+
-                "Covariance matrix on screen\n"+covScreen.ToString());
-            */
+            splatInVFNumber++;
+            if (splatInVFNumber > 0)
+            {
+
+                Debug.Log(
+                    "Numer splata: " + iter + "\n" +
+                    "Pozycja splata: " + temp.position.ToString() + "\n" +
+                    "Skala splata: " + temp.scale.ToString() + "\n" +
+                    "Pozycja splata na ekranie: " + screenPos.ToString() + "\n" +
+                    "Matryca kowariancji: \n" + cov.ToString() + "\n" +
+                    "Covariance matrix on screen\n" + covScreen.ToString());
+            }
+
+            if (splatInVFNumber > 500) break;
+
+
             Matrix4x4 sigma2D = new Matrix4x4();
             sigma2D.SetRow(0, covScreen.GetRow(0));
             sigma2D.SetRow(1, covScreen.GetRow(1));
 
             // Obliczamy eigenvalues (rozmiary Bounding Boxa)
             Vector2 scale2D = ComputeEigenvalues(sigma2D);
-
-            /*
-            Debug.Log("PArametry dla splatow w view frustrum:\n" +
-                "Pozycja na ekranie: " + screenPos.ToString() + "\n" +
-                "Eigenvalues: " + scale2D.x + " " + scale2D.y+"\n"+
-                "Pozycja w 3d:"+temp.position.ToString());
-            */
 
             // Przeliczenie Bounding Boxa do pikseli ekranu
             float pixelSizeX = scale2D.x * camIntr.width;
@@ -670,10 +691,15 @@ public class mainTrainingLoop : MonoBehaviour
 
         }
 
-        //odrzucenie splatow poza view frustrum
-
-        //przejscie po klatkach w ekranie, wyznaczenie gdzie ktory splat idzie
         
+        float[] splatArray = new float[splatyDoPokazania.Count*38];
+        foreach (var splat in splatArray) { }
+        ComputeBuffer splatBuffer = new ComputeBuffer(splatArray.Length, sizeof(float));
+        
+
+
+        splatBuffer.SetData(splatArray);
+
 
         return outputImage;
     }

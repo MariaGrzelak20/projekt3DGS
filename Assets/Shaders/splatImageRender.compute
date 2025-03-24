@@ -21,6 +21,7 @@ StructuredBuffer<float> sizes : register(t3);                 // Liczba splatow,
 // Bufor wyjściowy: przechowywanie wyniku
 RWBuffer<float> lossBuffer : register(u0);
 RWTexture2D<float4> Result;
+
 cbuffer CameraData : register(b0) {
     matrix ViewProjectionMatrix;
 }
